@@ -13,6 +13,8 @@ import 'package:skill_link/student/post_project_modal.dart';
 import 'package:skill_link/student/student_profile.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -147,11 +149,81 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
 }
 
 // Student Dashboard (Home Tab)
-class StudentDashboard extends StatelessWidget {
+class StudentDashboard extends StatefulWidget {
   const StudentDashboard({Key? key}) : super(key: key);
 
   @override
+  State<StudentDashboard> createState() => _StudentDashboardState();
+}
+
+class _StudentDashboardState extends State<StudentDashboard> {
+  final User? _currentUser = FirebaseAuth.instance.currentUser;
+  String _userName = 'Student';
+  int _eventsCount = 0;
+  int _projectsCount = 0;
+  int _certificatesCount = 0;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDashboardData();
+  }
+
+  Future<void> _loadDashboardData() async {
+    if (_currentUser == null) {
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    try {
+      // Load user data
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUser!.uid)
+          .get();
+
+      if (userDoc.exists) {
+        Map<String, dynamic>? userData =
+            userDoc.data() as Map<String, dynamic>?;
+
+        setState(() {
+          _userName = userData?['fullName']?.split(' ')[0] ?? 'Student';
+          _eventsCount = userData?['stats']?['eventsAttended'] ?? 0;
+          _projectsCount = userData?['stats']?['projectsPosted'] ?? 0;
+          _certificatesCount = userData?['stats']?['certificatesEarned'] ?? 0;
+        });
+      }
+
+      // Also get total available events and projects
+      QuerySnapshot eventsSnapshot = await FirebaseFirestore.instance
+          .collection('events')
+          .get();
+
+      // ignore: unused_local_variable
+      QuerySnapshot projectsSnapshot = await FirebaseFirestore.instance
+          .collection('projects')
+          .get();
+
+      setState(() {
+        // You can choose to show user's stats OR total available
+        // Currently showing user's stats, but you can change to:
+        // _eventsCount = eventsSnapshot.docs.length;
+        // _projectsCount = projectsSnapshot.docs.length;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading dashboard data: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAFB),
       body: SafeArea(
@@ -235,9 +307,9 @@ class StudentDashboard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 24),
-                    const Text(
-                      'Welcome, Student!',
-                      style: TextStyle(
+                    Text(
+                      'Welcome, $_userName!',
+                      style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
@@ -258,7 +330,7 @@ class StudentDashboard extends StatelessWidget {
                 children: [
                   Expanded(
                     child: _buildStatCard(
-                      '12',
+                      _eventsCount.toString(),
                       'Events',
                       Icons.event,
                       const Color(0xFF3B82F6),
@@ -267,7 +339,7 @@ class StudentDashboard extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: _buildStatCard(
-                      '8',
+                      _projectsCount.toString(),
                       'Projects',
                       Icons.work,
                       const Color(0xFF10B981),
@@ -276,7 +348,7 @@ class StudentDashboard extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: _buildStatCard(
-                      '5',
+                      _certificatesCount.toString(),
                       'Certificates',
                       Icons.card_membership,
                       const Color(0xFFA855F7),

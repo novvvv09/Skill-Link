@@ -1,25 +1,170 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-class ProfessorProfileScreen extends StatelessWidget {
+class ProfessorProfileScreen extends StatefulWidget {
   final VoidCallback onLogout;
 
   const ProfessorProfileScreen({Key? key, required this.onLogout})
     : super(key: key);
 
   @override
+  State<ProfessorProfileScreen> createState() => _ProfessorProfileScreenState();
+}
+
+class _ProfessorProfileScreenState extends State<ProfessorProfileScreen> {
+  final User? _currentUser = FirebaseAuth.instance.currentUser;
+  Map<String, dynamic>? _userData;
+  bool _isLoading = true;
+  int _totalEvents = 0;
+  int _activeEvents = 0;
+  int _totalStudents = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+    _loadProfessorStats();
+  }
+
+  Future<void> _loadUserData() async {
+    if (_currentUser == null) {
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    try {
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUser!.uid)
+          .get();
+
+      if (userDoc.exists) {
+        setState(() {
+          _userData = userDoc.data() as Map<String, dynamic>?;
+          _isLoading = false;
+        });
+      } else {
+        setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      print('Error loading user data: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _loadProfessorStats() async {
+    if (_currentUser == null) return;
+
+    try {
+      // Count total events created by this professor
+      QuerySnapshot eventsSnapshot = await FirebaseFirestore.instance
+          .collection('events')
+          .where('createdBy', isEqualTo: _currentUser!.uid)
+          .get();
+
+      // Count active events (events with date in the future)
+      int activeCount = 0;
+      for (var doc in eventsSnapshot.docs) {
+        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+        // You can add date checking logic here if needed
+        activeCount++;
+      }
+
+      // Count total unique students registered for professor's events
+      Set<String> uniqueStudents = {};
+      for (var eventDoc in eventsSnapshot.docs) {
+        QuerySnapshot registrations = await FirebaseFirestore.instance
+            .collection('events')
+            .doc(eventDoc.id)
+            .collection('registrations')
+            .get();
+
+        for (var reg in registrations.docs) {
+          uniqueStudents.add(reg.id);
+        }
+      }
+
+      setState(() {
+        _totalEvents = eventsSnapshot.docs.length;
+        _activeEvents = activeCount;
+        _totalStudents = uniqueStudents.length;
+      });
+    } catch (e) {
+      print('Error loading professor stats: $e');
+    }
+  }
+
+  void _handleLogout() async {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
+              if (context.mounted) {
+                Navigator.pop(context);
+                widget.onLogout();
+              }
+            },
+            child: const Text(
+              'Logout',
+              style: TextStyle(color: Color(0xFFEF4444)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final professor = {
-      'name': ' Erica Sinclair',
-      'title': 'Associate Professor',
-      'department': 'Computer Science',
-      'email': 'e.sinclair.114567.tc@umindanao.edu.ph',
-      'phone': '+1 (555) 123-4567',
-      'office': 'CS Building, Room AVR',
-      'joinDate': 'September 2025',
-      'totalEvents': 24,
-      'activeEvents': 10,
-      'totalStudents': 156,
-    };
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    if (_currentUser == null || _userData == null) {
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('No user data found'),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: widget.onLogout,
+                child: const Text('Go to Login'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Get user data with fallbacks
+    String fullName = _userData?['fullName'] ?? 'Professor';
+    String email = _userData?['email'] ?? _currentUser?.email ?? 'No email';
+    String role = _userData?['role'] ?? 'professor';
+    String title = role == 'professor' ? 'Professor' : 'Staff';
+
+    // Format created date
+    String memberSince = 'Recently';
+    if (_userData?['createdAt'] != null) {
+      try {
+        Timestamp timestamp = _userData!['createdAt'];
+        DateTime date = timestamp.toDate();
+        memberSince = '${_getMonthName(date.month)} ${date.year}';
+      } catch (e) {
+        memberSince = 'Recently';
+      }
+    }
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -98,6 +243,7 @@ class ProfessorProfileScreen extends StatelessWidget {
                               width: 80,
                               height: 80,
                               decoration: BoxDecoration(
+                                color: Colors.grey[200],
                                 shape: BoxShape.circle,
                                 boxShadow: [
                                   BoxShadow(
@@ -107,21 +253,10 @@ class ProfessorProfileScreen extends StatelessWidget {
                                   ),
                                 ],
                               ),
-                              child: ClipOval(
-                                child: Image.asset(
-                                  'assets/logo.png',
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Container(
-                                      color: Colors.grey[200],
-                                      child: const Icon(
-                                        Icons.person,
-                                        size: 40,
-                                        color: Colors.grey,
-                                      ),
-                                    );
-                                  },
-                                ),
+                              child: const Icon(
+                                Icons.person,
+                                size: 40,
+                                color: Color(0xFFA855F7),
                               ),
                             ),
                             Positioned(
@@ -149,7 +284,7 @@ class ProfessorProfileScreen extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                professor['name'] as String,
+                                fullName,
                                 style: const TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.bold,
@@ -158,16 +293,16 @@ class ProfessorProfileScreen extends StatelessWidget {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                professor['title'] as String,
+                                title,
                                 style: const TextStyle(
                                   fontSize: 14,
                                   color: Color(0xFFA855F7),
                                 ),
                               ),
                               const SizedBox(height: 2),
-                              Text(
-                                professor['department'] as String,
-                                style: const TextStyle(
+                              const Text(
+                                'Computer Science',
+                                style: TextStyle(
                                   fontSize: 12,
                                   color: Color(0xFF6B7280),
                                 ),
@@ -192,7 +327,7 @@ class ProfessorProfileScreen extends StatelessWidget {
                             child: Column(
                               children: [
                                 Text(
-                                  '${professor['totalEvents']}',
+                                  '$_totalEvents',
                                   style: const TextStyle(
                                     fontSize: 28,
                                     fontWeight: FontWeight.bold,
@@ -222,7 +357,7 @@ class ProfessorProfileScreen extends StatelessWidget {
                             child: Column(
                               children: [
                                 Text(
-                                  '${professor['activeEvents']}',
+                                  '$_activeEvents',
                                   style: const TextStyle(
                                     fontSize: 28,
                                     fontWeight: FontWeight.bold,
@@ -252,7 +387,7 @@ class ProfessorProfileScreen extends StatelessWidget {
                             child: Column(
                               children: [
                                 Text(
-                                  '${professor['totalStudents']}',
+                                  '$_totalStudents',
                                   style: const TextStyle(
                                     fontSize: 28,
                                     fontWeight: FontWeight.bold,
@@ -279,28 +414,28 @@ class ProfessorProfileScreen extends StatelessWidget {
                     _buildContactItem(
                       Icons.email,
                       'Email',
-                      professor['email'] as String,
+                      email,
                       const Color(0xFFA855F7),
                     ),
                     const SizedBox(height: 12),
                     _buildContactItem(
                       Icons.phone,
                       'Phone',
-                      professor['phone'] as String,
+                      _userData?['phone'] ?? 'Not set',
                       const Color(0xFFA855F7),
                     ),
                     const SizedBox(height: 12),
                     _buildContactItem(
                       Icons.business,
                       'Office',
-                      professor['office'] as String,
+                      _userData?['office'] ?? 'Not set',
                       const Color(0xFFA855F7),
                     ),
                     const SizedBox(height: 12),
                     _buildContactItem(
                       Icons.calendar_today,
                       'Member Since',
-                      professor['joinDate'] as String,
+                      memberSince,
                       const Color(0xFFA855F7),
                     ),
                   ],
@@ -361,7 +496,7 @@ class ProfessorProfileScreen extends StatelessWidget {
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: onLogout,
+                  onPressed: _handleLogout,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFFEE2E2),
                     foregroundColor: const Color(0xFFEF4444),
@@ -407,6 +542,25 @@ class ProfessorProfileScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _getMonthName(int month) {
+    const months = [
+      '',
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return months[month];
   }
 
   Widget _buildContactItem(
@@ -461,9 +615,7 @@ class ProfessorProfileScreen extends StatelessWidget {
     Color iconColor,
   ) {
     return InkWell(
-      onTap: () {
-        // Handle settings navigation
-      },
+      onTap: () {},
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(

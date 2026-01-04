@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-class ProfessorDashboard extends StatelessWidget {
+class ProfessorDashboard extends StatefulWidget {
   final void Function(String screen) onNavigate;
   final void Function(int eventId) onViewEvent;
 
@@ -11,27 +13,102 @@ class ProfessorDashboard extends StatelessWidget {
   }) : super(key: key);
 
   @override
+  State<ProfessorDashboard> createState() => _ProfessorDashboardState();
+}
+
+class _ProfessorDashboardState extends State<ProfessorDashboard> {
+  final User? _currentUser = FirebaseAuth.instance.currentUser;
+  String _professorName = 'Professor';
+  int _totalEvents = 0;
+  int _totalStudents = 0;
+  int _upcomingEvents = 0;
+  List<Map<String, dynamic>> _events = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDashboardData();
+  }
+
+  Future<void> _loadDashboardData() async {
+    if (_currentUser == null) {
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    try {
+      // Load user data
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUser!.uid)
+          .get();
+
+      if (userDoc.exists) {
+        Map<String, dynamic>? userData =
+            userDoc.data() as Map<String, dynamic>?;
+        setState(() {
+          _professorName = userData?['fullName']?.split(' ')[0] ?? 'Professor';
+        });
+      }
+
+      // Load events created by this professor
+      QuerySnapshot eventsSnapshot = await FirebaseFirestore.instance
+          .collection('events')
+          .where('createdBy', isEqualTo: _currentUser!.uid)
+          .orderBy('date', descending: false)
+          .get();
+
+      // Count unique students registered for professor's events
+      Set<String> uniqueStudents = {};
+      List<Map<String, dynamic>> eventsList = [];
+
+      for (var eventDoc in eventsSnapshot.docs) {
+        Map<String, dynamic> data = eventDoc.data() as Map<String, dynamic>;
+
+        // Get registrations for this event
+        QuerySnapshot registrations = await FirebaseFirestore.instance
+            .collection('events')
+            .doc(eventDoc.id)
+            .collection('registrations')
+            .get();
+
+        for (var reg in registrations.docs) {
+          uniqueStudents.add(reg.id);
+        }
+
+        int registeredCount = registrations.docs.length;
+        int capacity = data['capacity'] ?? 50;
+
+        eventsList.add({
+          'id': eventDoc.id,
+          'title': data['title'] ?? 'Untitled Event',
+          'date': data['date'] ?? 'TBD',
+          'time': data['time'] ?? 'TBD',
+          'location': data['location'] ?? 'TBD',
+          'registered': registeredCount,
+          'capacity': capacity,
+        });
+      }
+
+      setState(() {
+        _totalEvents = eventsSnapshot.docs.length;
+        _totalStudents = uniqueStudents.length;
+        _upcomingEvents = eventsList.length; // You can add date filtering here
+        _events = eventsList.take(2).toList(); // Show only first 2 events
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading dashboard data: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final upcomingEvents = [
-      {
-        'id': 1,
-        'title': 'Flutter Workshop',
-        'date': 'Dec 28, 2025',
-        'time': '2:00 PM',
-        'location': 'Room 301',
-        'registered': 45,
-        'capacity': 50,
-      },
-      {
-        'id': 2,
-        'title': 'Web Dev Bootcamp',
-        'date': 'Dec 30, 2025',
-        'time': '10:00 AM',
-        'location': 'Lab A',
-        'registered': 30,
-        'capacity': 35,
-      },
-    ];
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAFB),
@@ -49,7 +126,8 @@ class ProfessorDashboard extends StatelessWidget {
                     children: [
                       const CircleAvatar(
                         radius: 24,
-                        backgroundImage: AssetImage('assets/logo.png'),
+                        backgroundColor: Color(0xFF7C3AED),
+                        child: Icon(Icons.person, color: Colors.white),
                       ),
                       const SizedBox(width: 12),
                       const Text(
@@ -67,8 +145,8 @@ class ProfessorDashboard extends StatelessWidget {
                       Container(
                         width: 40,
                         height: 40,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF3E8FF),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFF3E8FF),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
@@ -115,9 +193,9 @@ class ProfessorDashboard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Welcome back, Professor! 👨‍🏫',
-                      style: TextStyle(
+                    Text(
+                      'Welcome back, $_professorName! 👨‍🏫',
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
@@ -130,7 +208,7 @@ class ProfessorDashboard extends StatelessWidget {
                     ),
                     const SizedBox(height: 16),
                     ElevatedButton.icon(
-                      onPressed: () => onNavigate('create-event'),
+                      onPressed: () => widget.onNavigate('create-event'),
                       icon: const Icon(Icons.add),
                       label: const Text('Create New Event'),
                       style: ElevatedButton.styleFrom(
@@ -151,21 +229,21 @@ class ProfessorDashboard extends StatelessWidget {
               Row(
                 children: [
                   _statCard(
-                    '8',
+                    _totalEvents.toString(),
                     'Total Events',
                     Icons.event,
                     const Color(0xFF7C3AED),
                   ),
                   const SizedBox(width: 12),
                   _statCard(
-                    '156',
+                    _totalStudents.toString(),
                     'Students',
                     Icons.people,
                     const Color(0xFF6366F1),
                   ),
                   const SizedBox(width: 12),
                   _statCard(
-                    '2',
+                    _upcomingEvents.toString(),
                     'Upcoming',
                     Icons.schedule,
                     const Color(0xFF10B981),
@@ -188,7 +266,7 @@ class ProfessorDashboard extends StatelessWidget {
                     ),
                   ),
                   TextButton(
-                    onPressed: () => onNavigate('events'),
+                    onPressed: () => widget.onNavigate('events'),
                     child: const Text('See all'),
                   ),
                 ],
@@ -196,60 +274,102 @@ class ProfessorDashboard extends StatelessWidget {
 
               const SizedBox(height: 12),
 
-              ...upcomingEvents.map((event) {
-                final progress = event['registered']! / event['capacity'];
-
-                return GestureDetector(
-                  onTap: () => onViewEvent(event['id'] as int),
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 16),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFFE5E7EB)),
-                    ),
+              if (_events.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFE5E7EB)),
+                  ),
+                  child: const Center(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        Icon(Icons.event_busy, size: 48, color: Colors.grey),
+                        SizedBox(height: 12),
                         Text(
-                          event['title'] as String,
-                          style: const TextStyle(
+                          'No events yet',
+                          style: TextStyle(
                             fontSize: 16,
-                            fontWeight: FontWeight.bold,
+                            color: Colors.grey,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            const Icon(Icons.access_time, size: 14),
-                            const SizedBox(width: 4),
-                            Text(event['time'] as String),
-                            const SizedBox(width: 12),
-                            const Icon(Icons.location_on, size: 14),
-                            const SizedBox(width: 4),
-                            Text(event['location'] as String),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
+                        SizedBox(height: 4),
                         Text(
-                          '${event['registered']} / ${event['capacity']} registered',
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                        const SizedBox(height: 6),
-                        LinearProgressIndicator(
-                          value: progress,
-                          minHeight: 6,
-                          backgroundColor: Colors.grey.shade200,
-                          valueColor: const AlwaysStoppedAnimation(
-                            Color(0xFF7C3AED),
-                          ),
+                          'Create your first event to get started',
+                          style: TextStyle(fontSize: 14, color: Colors.grey),
                         ),
                       ],
                     ),
                   ),
-                );
-              }).toList(),
+                )
+              else
+                ..._events.map((event) {
+                  final registered = event['registered'] as int;
+                  final capacity = event['capacity'] as int;
+                  final progress = capacity > 0 ? registered / capacity : 0.0;
+
+                  return GestureDetector(
+                    onTap: () {
+                      // Convert string ID to int for compatibility
+                      // You might need to adjust this based on your event ID structure
+                      widget.onViewEvent(1);
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: const Color(0xFFE5E7EB)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            event['title'] as String,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              const Icon(Icons.access_time, size: 14),
+                              const SizedBox(width: 4),
+                              Text(event['time'] as String),
+                              const SizedBox(width: 12),
+                              const Icon(Icons.location_on, size: 14),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  event['location'] as String,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '$registered / $capacity registered',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          const SizedBox(height: 6),
+                          LinearProgressIndicator(
+                            value: progress,
+                            minHeight: 6,
+                            backgroundColor: Colors.grey.shade200,
+                            valueColor: const AlwaysStoppedAnimation(
+                              Color(0xFF7C3AED),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
 
               const SizedBox(height: 24),
 
@@ -264,18 +384,28 @@ class ProfessorDashboard extends StatelessWidget {
               ),
               const SizedBox(height: 12),
 
-              _activityItem(
-                Icons.people,
-                '5 new registrations for Flutter Workshop',
-                '2 hours ago',
-                const Color(0xFF7C3AED),
-              ),
-              _activityItem(
-                Icons.event,
-                'Web Dev Bootcamp starting tomorrow',
-                '1 day ago',
-                const Color(0xFF6366F1),
-              ),
+              if (_events.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFE5E7EB)),
+                  ),
+                  child: const Center(
+                    child: Text(
+                      'No recent activity',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                )
+              else
+                _activityItem(
+                  Icons.event,
+                  'You have ${_events.length} upcoming events',
+                  'Just now',
+                  const Color(0xFF7C3AED),
+                ),
             ],
           ),
         ),
@@ -300,7 +430,11 @@ class ProfessorDashboard extends StatelessWidget {
               value,
               style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
-            Text(label, style: const TextStyle(fontSize: 12)),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
       ),
@@ -329,7 +463,10 @@ class ProfessorDashboard extends StatelessWidget {
               children: [
                 Text(text, style: const TextStyle(fontSize: 14)),
                 const SizedBox(height: 4),
-                Text(time, style: const TextStyle(fontSize: 12)),
+                Text(
+                  time,
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
               ],
             ),
           ),
@@ -337,8 +474,4 @@ class ProfessorDashboard extends StatelessWidget {
       ),
     );
   }
-}
-
-extension on Object {
-  operator /(Object? other) {}
 }

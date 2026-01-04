@@ -165,16 +165,21 @@ class _SignUpScreenState extends State<SignUpScreen> {
               Column(
                 children: [
                   Container(
-                    width: 64,
-                    height: 64,
+                    width: 80,
+                    height: 80,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(16),
-                      gradient: headerGradient,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.15),
+                          blurRadius: 20,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
-                    child: const Icon(
-                      Icons.school,
-                      color: Colors.white,
-                      size: 36,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Image.asset('logo.png', fit: BoxFit.cover),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -243,7 +248,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       label: 'Full Name',
                       icon: Icons.person,
                       controller: _fullNameController,
-                      hint: 'John Doe',
+                      hint: 'Your full name',
                     ),
                     _buildInput(
                       label: 'University Email',
@@ -274,6 +279,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             : const Text(
                                 'Create Account',
                                 style: TextStyle(
+                                  color: Colors.white,
                                   fontWeight: FontWeight.bold,
                                   fontSize: 16,
                                 ),
