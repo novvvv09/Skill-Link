@@ -1,9 +1,53 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({Key? key}) : super(key: key);
 
-  void _handleLogout(BuildContext context) {
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  final User? _currentUser = FirebaseAuth.instance.currentUser;
+  Map<String, dynamic>? _userData;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    if (_currentUser == null) {
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    try {
+      // Fetch user data from Firestore
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUser!.uid)
+          .get();
+
+      if (userDoc.exists) {
+        setState(() {
+          _userData = userDoc.data() as Map<String, dynamic>?;
+          _isLoading = false;
+        });
+      } else {
+        setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      print('Error loading user data: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _handleLogout(BuildContext context) async {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -15,10 +59,16 @@ class ProfileScreen extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
-              Navigator.pop(context); // Close dialog
-              // Navigate back to splash/login screen
-              Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut(); // Sign out from Firebase
+              if (context.mounted) {
+                Navigator.pop(context); // Close dialog
+                Navigator.pushNamedAndRemoveUntil(
+                  context,
+                  '/',
+                  (route) => false,
+                );
+              }
             },
             child: const Text(
               'Log-out',
@@ -32,6 +82,34 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    if (_currentUser == null || _userData == null) {
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('No user data found'),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    '/',
+                    (route) => false,
+                  );
+                },
+                child: const Text('Go to Login'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAFB),
       body: SafeArea(
@@ -40,23 +118,14 @@ class ProfileScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
               _buildHeader(),
               const SizedBox(height: 24),
-
-              // Profile Header Card
               _buildProfileCard(context),
               const SizedBox(height: 24),
-
-              // Personal Information
               _buildPersonalInfo(),
               const SizedBox(height: 24),
-
-              // Settings Menu
               _buildSettingsMenu(),
               const SizedBox(height: 24),
-
-              // Logout Button
               _buildLogoutButton(context),
             ],
           ),
@@ -87,6 +156,16 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Widget _buildProfileCard(BuildContext context) {
+    // Get user data with fallbacks
+    String fullName = _userData?['fullName'] ?? 'User';
+    String role = _userData?['role'] ?? 'student';
+    String roleDisplay = role == 'student' ? 'Student' : 'Professor';
+
+    // Get stats with fallbacks
+    int eventsCount = _userData?['stats']?['eventsAttended'] ?? 0;
+    int projectsCount = _userData?['stats']?['projectsPosted'] ?? 0;
+    int certificatesCount = _userData?['stats']?['certificatesEarned'] ?? 0;
+
     return Container(
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -106,11 +185,9 @@ class ProfileScreen extends StatelessWidget {
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
-          // Profile Header
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Avatar and Info
               Expanded(
                 child: Row(
                   children: [
@@ -135,22 +212,22 @@ class ProfileScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 16),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Mike Wheeler',
-                            style: TextStyle(
+                            fullName,
+                            style: const TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
                               color: Colors.white,
                             ),
                           ),
-                          SizedBox(height: 4),
+                          const SizedBox(height: 4),
                           Text(
-                            'Computer Science Student',
-                            style: TextStyle(
+                            roleDisplay,
+                            style: const TextStyle(
                               fontSize: 14,
                               color: Color(0xFFBFDBFE),
                             ),
@@ -161,7 +238,6 @@ class ProfileScreen extends StatelessWidget {
                   ],
                 ),
               ),
-              // Edit Button
               Container(
                 width: 40,
                 height: 40,
@@ -179,15 +255,20 @@ class ProfileScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 24),
-
-          // Stats
           Row(
             children: [
-              Expanded(child: _buildStatCard('12', 'Events')),
+              Expanded(child: _buildStatCard(eventsCount.toString(), 'Events')),
               const SizedBox(width: 12),
-              Expanded(child: _buildStatCard('8', 'Projects')),
+              Expanded(
+                child: _buildStatCard(projectsCount.toString(), 'Projects'),
+              ),
               const SizedBox(width: 12),
-              Expanded(child: _buildStatCard('5', 'Certificates')),
+              Expanded(
+                child: _buildStatCard(
+                  certificatesCount.toString(),
+                  'Certificates',
+                ),
+              ),
             ],
           ),
         ],
@@ -223,6 +304,22 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Widget _buildPersonalInfo() {
+    String email = _userData?['email'] ?? _currentUser?.email ?? 'No email';
+    String phone = _userData?['phone'] ?? 'Not set';
+    String location = _userData?['location'] ?? 'Not set';
+
+    // Format created date
+    String memberSince = 'Recently';
+    if (_userData?['createdAt'] != null) {
+      try {
+        Timestamp timestamp = _userData!['createdAt'];
+        DateTime date = timestamp.toDate();
+        memberSince = '${_getMonthName(date.month)} ${date.year}';
+      } catch (e) {
+        memberSince = 'Recently';
+      }
+    }
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -252,7 +349,7 @@ class ProfileScreen extends StatelessWidget {
           _buildInfoItem(
             Icons.email_outlined,
             'Email',
-            'm.wheeler.144257.tc@umindanao.edu.ph',
+            email,
             const Color(0xFFA855F7),
             const Color(0xFFF3E8FF),
           ),
@@ -260,7 +357,7 @@ class ProfileScreen extends StatelessWidget {
           _buildInfoItem(
             Icons.phone_outlined,
             'Phone',
-            '+1 (555) 123-4567',
+            phone,
             const Color(0xFFA855F7),
             const Color(0xFFF3E8FF),
           ),
@@ -268,7 +365,7 @@ class ProfileScreen extends StatelessWidget {
           _buildInfoItem(
             Icons.location_on_outlined,
             'Location',
-            'Philippines, Tagum City',
+            location,
             const Color(0xFFA855F7),
             const Color(0xFFF3E8FF),
           ),
@@ -276,7 +373,7 @@ class ProfileScreen extends StatelessWidget {
           _buildInfoItem(
             Icons.calendar_today_outlined,
             'Member Since',
-            'January 2025',
+            memberSince,
             const Color(0xFFA855F7),
             const Color(0xFFF3E8FF),
           ),
@@ -285,6 +382,26 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
+  String _getMonthName(int month) {
+    const months = [
+      '',
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return months[month];
+  }
+
+  // Keep all your other existing methods (_buildInfoItem, _buildSettingsMenu, etc.)
   Widget _buildInfoItem(
     IconData icon,
     String label,
@@ -383,9 +500,7 @@ class ProfileScreen extends StatelessWidget {
     Color iconColor,
   ) {
     return InkWell(
-      onTap: () {
-        // Handle settings navigation
-      },
+      onTap: () {},
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
@@ -424,8 +539,6 @@ class ProfileScreen extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [Color(0xFFFEE2E2), Color(0xFFFEE2E2)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(12),
         boxShadow: [

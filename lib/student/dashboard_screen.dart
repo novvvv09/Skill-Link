@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class DashboardScreen extends StatefulWidget {
   final void Function(int index) onNavigate;
@@ -16,49 +18,117 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _showNotification = false;
   Timer? _timer;
 
-  final List<Map<String, dynamic>> eventSlides = [
-    {
-      'title': 'Flutter Workshop',
-      'date': 'Dec 20, 2025',
-      'time': '2:00 PM',
-      'location': 'Room 301',
-      'attendees': '45',
-      'description': 'Master Flutter development with hands-on projects',
-      'image': 'https://images.unsplash.com/photo-1761250246894-ee2314939662',
-      'gradient': [Color(0xFF3B82F6), Color(0xFF7C3AED)],
-    },
-    {
-      'title': 'Web Dev Bootcamp',
-      'date': 'Dec 22, 2025',
-      'time': '10:00 AM',
-      'location': 'Lab A',
-      'attendees': '30',
-      'description': 'Build modern web apps with React & Node.js',
-      'image': 'https://images.unsplash.com/photo-1763568258320-c954a19683e3',
-      'gradient': [Color(0xFF10B981), Color(0xFF06B6D4)],
-    },
-    {
-      'title': 'Hackathon 2025',
-      'date': 'Dec 25, 2025',
-      'time': '9:00 AM',
-      'location': 'Main Hall',
-      'attendees': '100+',
-      'description': 'Code, compete, and win amazing prizes!',
-      'image': 'https://images.unsplash.com/photo-1649451844813-3130d6f42f8a',
-      'gradient': [Color(0xFFF97316), Color(0xFFEF4444)],
-    },
-  ];
+  final User? _currentUser = FirebaseAuth.instance.currentUser;
+  String _userName = 'Student';
+  List<Map<String, dynamic>> _events = [];
+  List<Map<String, dynamic>> _projects = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
+    _loadUserData();
+    _loadEvents();
+    _loadProjects();
+  }
+
+  Future<void> _loadUserData() async {
+    if (_currentUser == null) return;
+
+    try {
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUser!.uid)
+          .get();
+
+      if (userDoc.exists) {
+        Map<String, dynamic>? userData =
+            userDoc.data() as Map<String, dynamic>?;
+        setState(() {
+          _userName = userData?['fullName']?.split(' ')[0] ?? 'Student';
+        });
+      }
+    } catch (e) {
+      print('Error loading user data: $e');
+    }
+  }
+
+  Future<void> _loadEvents() async {
+    try {
+      QuerySnapshot eventSnapshot = await FirebaseFirestore.instance
+          .collection('events')
+          .orderBy('date', descending: false)
+          .limit(3)
+          .get();
+
+      setState(() {
+        _events = eventSnapshot.docs.map((doc) {
+          Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+          return {
+            'id': doc.id,
+            'title': data['title'] ?? 'Untitled Event',
+            'date': data['date'] ?? 'TBD',
+            'time': data['time'] ?? 'TBD',
+            'location': data['location'] ?? 'TBD',
+            'attendees': data['registeredCount']?.toString() ?? '0',
+            'description': data['description'] ?? 'No description',
+            'image':
+                data['imageUrl'] ??
+                'https://images.unsplash.com/photo-1540575467063-178a50c2df87',
+            'gradient': [const Color(0xFF3B82F6), const Color(0xFF7C3AED)],
+          };
+        }).toList();
+        _isLoading = false;
+      });
+
+      // Start auto-slide if there are events
+      if (_events.isNotEmpty) {
+        _startAutoSlide();
+      }
+    } catch (e) {
+      print('Error loading events: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadProjects() async {
+    try {
+      QuerySnapshot projectSnapshot = await FirebaseFirestore.instance
+          .collection('projects')
+          .orderBy('createdAt', descending: true)
+          .limit(3)
+          .get();
+
+      setState(() {
+        _projects = projectSnapshot.docs.map((doc) {
+          Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+          return {
+            'id': doc.id,
+            'title': data['title'] ?? 'Untitled Project',
+            'description': data['description'] ?? 'No description',
+            'likes': data['likes'] ?? 0,
+            'createdBy': data['createdBy'] ?? 'Unknown',
+          };
+        }).toList();
+      });
+    } catch (e) {
+      print('Error loading projects: $e');
+    }
+  }
+
+  void _startAutoSlide() {
     _timer = Timer.periodic(const Duration(seconds: 4), (_) {
-      _currentSlide = (_currentSlide + 1) % eventSlides.length;
-      _pageController.animateToPage(
-        _currentSlide,
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOut,
-      );
+      if (_events.isEmpty) return;
+      _currentSlide = (_currentSlide + 1) % _events.length;
+      if (_pageController.hasClients) {
+        _pageController.animateToPage(
+          _currentSlide,
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeInOut,
+        );
+      }
     });
   }
 
@@ -74,69 +144,73 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAFB),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // HEADER
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: const [
-                      CircleAvatar(radius: 24, child: Icon(Icons.school)),
-                      SizedBox(width: 12),
-                      Text(
-                        'CS Student Hub',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // HEADER
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: const [
+                            CircleAvatar(radius: 24, child: Icon(Icons.school)),
+                            SizedBox(width: 12),
+                            Text(
+                              'CS Student Hub',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.notifications),
+                          onPressed: () {
+                            setState(() {
+                              _showNotification = !_showNotification;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+
+                    if (_showNotification) ...[
+                      const SizedBox(height: 16),
+                      _buildNotificationCard(),
+                    ],
+
+                    const SizedBox(height: 24),
+
+                    // SLIDESHOW
+                    if (_events.isEmpty)
+                      _buildNoEventsCard()
+                    else
+                      SizedBox(
+                        height: 260,
+                        child: PageView.builder(
+                          controller: _pageController,
+                          onPageChanged: (index) {
+                            setState(() => _currentSlide = index);
+                          },
+                          itemCount: _events.length,
+                          itemBuilder: (context, index) {
+                            return _buildEventSlide(_events[index]);
+                          },
                         ),
                       ),
-                    ],
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.notifications),
-                    onPressed: () {
-                      setState(() {
-                        _showNotification = !_showNotification;
-                      });
-                    },
-                  ),
-                ],
-              ),
 
-              if (_showNotification) ...[
-                const SizedBox(height: 16),
-                _buildNotificationCard(),
-              ],
+                    const SizedBox(height: 24),
 
-              const SizedBox(height: 24),
-
-              // SLIDESHOW
-              SizedBox(
-                height: 260,
-                child: PageView.builder(
-                  controller: _pageController,
-                  onPageChanged: (index) {
-                    setState(() => _currentSlide = index);
-                  },
-                  itemCount: eventSlides.length,
-                  itemBuilder: (context, index) {
-                    final slide = eventSlides[index];
-                    return _buildEventSlide(slide);
-                  },
+                    // PROJECTS
+                    _buildProjectsSection(),
+                  ],
                 ),
               ),
-
-              const SizedBox(height: 24),
-
-              // PROJECTS
-              _buildProjectsSection(),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -153,14 +227,50 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: const [
+        children: [
           Text(
-            'Welcome back, Student !',
-            style: TextStyle(fontWeight: FontWeight.bold),
+            'Welcome back, $_userName!',
+            style: const TextStyle(fontWeight: FontWeight.bold),
           ),
-          SizedBox(height: 6),
-          Text('You have 2 upcoming events'),
+          const SizedBox(height: 6),
+          Text('You have ${_events.length} upcoming events'),
         ],
+      ),
+    );
+  }
+
+  Widget _buildNoEventsCard() {
+    return Container(
+      height: 260,
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF3B82F6), Color(0xFF7C3AED)],
+        ),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.event_busy, size: 64, color: Colors.white70),
+            SizedBox(height: 16),
+            Text(
+              'No Events Yet',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Check back later for upcoming events',
+              style: TextStyle(color: Colors.white70),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -180,9 +290,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
           gradient: LinearGradient(
-            colors: slide['gradient'],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+            colors: [
+              Colors.black.withOpacity(0.6),
+              Colors.black.withOpacity(0.3),
+            ],
+            begin: Alignment.bottomCenter,
+            end: Alignment.topCenter,
           ),
         ),
         child: Column(
@@ -201,6 +314,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Text(
               slide['description'],
               style: const TextStyle(color: Colors.white70),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Icon(
+                  Icons.calendar_today,
+                  size: 14,
+                  color: Colors.white70,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  slide['date'],
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+                const SizedBox(width: 16),
+                const Icon(Icons.people, size: 14, color: Colors.white70),
+                const SizedBox(width: 4),
+                Text(
+                  '${slide['attendees']} registered',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+              ],
             ),
           ],
         ),
@@ -225,14 +362,61 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ],
         ),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
+        const SizedBox(height: 12),
+        if (_projects.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE5E7EB)),
+            ),
+            child: const Center(
+              child: Text(
+                'No projects yet',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+          )
+        else
+          ..._projects.map(
+            (project) => Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    project['title'],
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    project['description'],
+                    style: TextStyle(color: Colors.grey[600]),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Icon(Icons.favorite, size: 16, color: Colors.red),
+                      const SizedBox(width: 4),
+                      Text('${project['likes']} likes'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ),
-          child: const Text('E-Commerce App'),
-        ),
       ],
     );
   }
