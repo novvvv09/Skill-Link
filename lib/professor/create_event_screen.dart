@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class CreateEventScreen extends StatefulWidget {
   final Function(int) onNavigate;
@@ -19,22 +21,92 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   final _locationController = TextEditingController();
   final _capacityController = TextEditingController();
   String _selectedCategory = 'workshop';
+  bool _isCreating = false;
 
-  void _handleSubmit() {
+  final User? _currentUser = FirebaseAuth.instance.currentUser;
+
+  Future<void> _handleSubmit() async {
     if (_formKey.currentState!.validate()) {
-      // Handle event creation
-      print('Creating event with title: ${_titleController.text}');
+      if (_currentUser == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You must be logged in to create an event'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
 
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Event created successfully!'),
-          backgroundColor: Color.fromARGB(255, 37, 185, 135),
-        ),
-      );
+      setState(() => _isCreating = true);
 
-      // Navigate to events screen
-      widget.onNavigate(1);
+      try {
+        // Get professor's name
+        DocumentSnapshot userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(_currentUser!.uid)
+            .get();
+
+        Map<String, dynamic>? userData =
+            userDoc.data() as Map<String, dynamic>?;
+        String professorName = userData?['fullName'] ?? 'Unknown Professor';
+
+        // Create event document
+        await FirebaseFirestore.instance.collection('events').add({
+          'title': _titleController.text.trim(),
+          'description': _descriptionController.text.trim(),
+          'category': _selectedCategory,
+          'date': _dateController.text,
+          'time': _timeController.text,
+          'location': _locationController.text.trim(),
+          'capacity': int.parse(_capacityController.text),
+          'registeredCount': 0,
+          'createdBy': _currentUser!.uid,
+          'professorName': professorName,
+          'imageUrl': '', // Placeholder for now
+          'createdAt': FieldValue.serverTimestamp(),
+          'status': 'active', // active, cancelled, completed
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Event created successfully!'),
+              backgroundColor: Color(0xFF10B981),
+            ),
+          );
+
+          // Clear form
+          _titleController.clear();
+          _descriptionController.clear();
+          _dateController.clear();
+          _timeController.clear();
+          _locationController.clear();
+          _capacityController.clear();
+          setState(() => _selectedCategory = 'workshop');
+
+          // Navigate to events screen
+          widget.onNavigate(1);
+        }
+      } on FirebaseException catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error creating event: ${e.message}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isCreating = false);
+        }
+      }
     }
   }
 
@@ -43,7 +115,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       context: context,
       initialDate: DateTime.now(),
       firstDate: DateTime.now(),
-      lastDate: DateTime(2026),
+      lastDate: DateTime(2026, 12, 31),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
@@ -501,7 +573,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                         onTap: () {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text('Image upload feature coming soon'),
+                              content: Text(
+                                'Image upload coming soon - mobile only',
+                              ),
                             ),
                           );
                         },
@@ -550,7 +624,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                       children: [
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: () => widget.onNavigate(0),
+                            onPressed: _isCreating
+                                ? null
+                                : () => widget.onNavigate(0),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFFF3F4F6),
                               foregroundColor: const Color(0xFF374151),
@@ -588,7 +664,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                               ],
                             ),
                             child: ElevatedButton(
-                              onPressed: _handleSubmit,
+                              onPressed: _isCreating ? null : _handleSubmit,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.transparent,
                                 shadowColor: Colors.transparent,
@@ -599,14 +675,23 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                               ),
-                              child: const Text(
-                                'Create Event',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
-                                ),
-                              ),
+                              child: _isCreating
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Text(
+                                      'Create Event',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white,
+                                      ),
+                                    ),
                             ),
                           ),
                         ),

@@ -490,11 +490,91 @@ class _ProfessorHomeScreenState extends State<ProfessorHomeScreen> {
 }
 
 // Professor Dashboard (Home Tab)
-class ProfessorDashboard extends StatelessWidget {
+class ProfessorDashboard extends StatefulWidget {
   const ProfessorDashboard({Key? key}) : super(key: key);
 
   @override
+  State<ProfessorDashboard> createState() => _ProfessorDashboardState();
+}
+
+class _ProfessorDashboardState extends State<ProfessorDashboard> {
+  final User? _currentUser = FirebaseAuth.instance.currentUser;
+  String _professorName = 'Professor';
+  int _totalEvents = 0;
+  int _totalStudents = 0;
+  int _totalProjects = 0;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDashboardData();
+  }
+
+  Future<void> _loadDashboardData() async {
+    if (_currentUser == null) {
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    try {
+      // Load user data
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUser!.uid)
+          .get();
+
+      if (userDoc.exists) {
+        Map<String, dynamic>? userData =
+            userDoc.data() as Map<String, dynamic>?;
+        setState(() {
+          _professorName = userData?['fullName']?.split(' ')[0] ?? 'Professor';
+        });
+      }
+
+      // Load events created by this professor
+      QuerySnapshot eventsSnapshot = await FirebaseFirestore.instance
+          .collection('events')
+          .where('createdBy', isEqualTo: _currentUser!.uid)
+          .get();
+
+      // Count unique students registered for professor's events
+      Set<String> uniqueStudents = {};
+      for (var eventDoc in eventsSnapshot.docs) {
+        QuerySnapshot registrations = await FirebaseFirestore.instance
+            .collection('events')
+            .doc(eventDoc.id)
+            .collection('registrations')
+            .get();
+
+        for (var reg in registrations.docs) {
+          uniqueStudents.add(reg.id);
+        }
+      }
+
+      // Get total projects count
+      QuerySnapshot projectsSnapshot = await FirebaseFirestore.instance
+          .collection('projects')
+          .get();
+
+      setState(() {
+        _totalEvents = eventsSnapshot.docs.length;
+        _totalStudents = uniqueStudents.length;
+        _totalProjects = projectsSnapshot.docs.length;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading dashboard data: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAFB),
       body: SafeArea(
@@ -578,9 +658,9 @@ class ProfessorDashboard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 24),
-                    const Text(
-                      'Welcome, Professor!',
-                      style: TextStyle(
+                    Text(
+                      'Welcome, $_professorName!',
+                      style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
@@ -601,7 +681,7 @@ class ProfessorDashboard extends StatelessWidget {
                 children: [
                   Expanded(
                     child: _buildStatCard(
-                      '24',
+                      _totalEvents.toString(),
                       'Events',
                       Icons.event,
                       const Color(0xFFA855F7),
@@ -610,7 +690,7 @@ class ProfessorDashboard extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: _buildStatCard(
-                      '156',
+                      _totalStudents.toString(),
                       'Students',
                       Icons.people,
                       const Color(0xFF10B981),
@@ -619,7 +699,7 @@ class ProfessorDashboard extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: _buildStatCard(
-                      '18',
+                      _totalProjects.toString(),
                       'Projects',
                       Icons.work,
                       const Color(0xFF3B82F6),
