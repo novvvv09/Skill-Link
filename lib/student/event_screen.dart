@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'event_registration_modal.dart';
 
 class EventsScreen extends StatefulWidget {
@@ -10,17 +12,71 @@ class EventsScreen extends StatefulWidget {
 
 class _EventsScreenState extends State<EventsScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final User? _currentUser = FirebaseAuth.instance.currentUser;
+
   String _searchQuery = '';
   String _selectedType = 'all';
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _events = [];
 
-  final List<Event> _events = mockEvents;
+  @override
+  void initState() {
+    super.initState();
+    _loadEvents();
+  }
 
-  List<Event> get _filteredEvents {
+  Future<void> _loadEvents() async {
+    setState(() => _isLoading = true);
+
+    try {
+      // Fetch all active events from Firestore
+      QuerySnapshot eventSnapshot = await FirebaseFirestore.instance
+          .collection('events')
+          .orderBy('date', descending: false)
+          .get();
+
+      List<Map<String, dynamic>> events = [];
+
+      for (var doc in eventSnapshot.docs) {
+        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+
+        events.add({
+          'id': doc.id,
+          'title': data['title'] ?? 'Untitled Event',
+          'description': data['description'] ?? 'No description',
+          'category': data['category'] ?? 'workshop',
+          'date': data['date'] ?? '',
+          'time': data['time'] ?? '',
+          'location': data['location'] ?? 'TBD',
+          'capacity': data['capacity'] ?? 50,
+          'registeredCount': data['registeredCount'] ?? 0,
+          'professorName': data['professorName'] ?? 'Unknown',
+          'createdBy': data['createdBy'] ?? '',
+          'imageUrl':
+              data['imageUrl'] ??
+              'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&q=80',
+        });
+      }
+
+      setState(() {
+        _events = events;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading events: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  List<Map<String, dynamic>> get _filteredEvents {
     return _events.where((event) {
       final matchesSearch =
-          event.title.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          event.description.toLowerCase().contains(_searchQuery.toLowerCase());
-      final matchesType = _selectedType == 'all' || event.type == _selectedType;
+          event['title'].toLowerCase().contains(_searchQuery.toLowerCase()) ||
+          event['description'].toLowerCase().contains(
+            _searchQuery.toLowerCase(),
+          );
+      final matchesType =
+          _selectedType == 'all' || event['category'] == _selectedType;
       return matchesSearch && matchesType;
     }).toList();
   }
@@ -55,10 +111,16 @@ class _EventsScreenState extends State<EventsScreen> {
     }
   }
 
-  void _showRegistrationModal(Event event) {
+  void _showRegistrationModal(Map<String, dynamic> event) {
     showDialog(
       context: context,
-      builder: (context) => EventRegistrationModal(event: event),
+      builder: (context) => EventRegistrationDialog(
+        event: event,
+        onRegistered: () {
+          // Reload events after registration
+          _loadEvents();
+        },
+      ),
     );
   }
 
@@ -75,18 +137,38 @@ class _EventsScreenState extends State<EventsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Tech Events',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF111827),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Discover and register for upcoming tech events',
-                    style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Tech Events',
+                              style: TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF111827),
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Discover and register for upcoming events',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Color(0xFF6B7280),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.refresh),
+                        onPressed: _loadEvents,
+                        color: const Color(0xFF3B82F6),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -196,17 +278,22 @@ class _EventsScreenState extends State<EventsScreen> {
 
             // Events List
             Expanded(
-              child: _filteredEvents.isEmpty
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _filteredEvents.isEmpty
                   ? _buildEmptyState()
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                      itemCount: _filteredEvents.length,
-                      itemBuilder: (context, index) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 16),
-                          child: _buildEventCard(_filteredEvents[index]),
-                        );
-                      },
+                  : RefreshIndicator(
+                      onRefresh: _loadEvents,
+                      child: ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                        itemCount: _filteredEvents.length,
+                        itemBuilder: (context, index) {
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: _buildEventCard(_filteredEvents[index]),
+                          );
+                        },
+                      ),
                     ),
             ),
           ],
@@ -215,8 +302,10 @@ class _EventsScreenState extends State<EventsScreen> {
     );
   }
 
-  Widget _buildEventCard(Event event) {
-    final isEventFull = event.registered >= event.capacity;
+  Widget _buildEventCard(Map<String, dynamic> event) {
+    final int registered = event['registeredCount'] ?? 0;
+    final int capacity = event['capacity'] ?? 50;
+    final isEventFull = registered >= capacity;
 
     return Container(
       decoration: BoxDecoration(
@@ -241,7 +330,8 @@ class _EventsScreenState extends State<EventsScreen> {
               topRight: Radius.circular(12),
             ),
             child: Image.network(
-              event.imageUrl,
+              event['imageUrl'] ??
+                  'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&q=80',
               height: 192,
               width: double.infinity,
               fit: BoxFit.cover,
@@ -271,15 +361,16 @@ class _EventsScreenState extends State<EventsScreen> {
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: _getTypeBackgroundColor(event.type),
+                        color: _getTypeBackgroundColor(event['category']),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        event.type[0].toUpperCase() + event.type.substring(1),
+                        event['category'][0].toUpperCase() +
+                            event['category'].substring(1),
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: _getTypeColor(event.type),
+                          color: _getTypeColor(event['category']),
                         ),
                       ),
                     ),
@@ -292,7 +383,7 @@ class _EventsScreenState extends State<EventsScreen> {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          '${event.registered}/${event.capacity}',
+                          '$registered/$capacity',
                           style: const TextStyle(
                             fontSize: 14,
                             color: Color(0xFF6B7280),
@@ -306,7 +397,7 @@ class _EventsScreenState extends State<EventsScreen> {
 
                 // Title
                 Text(
-                  event.title,
+                  event['title'],
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -315,13 +406,36 @@ class _EventsScreenState extends State<EventsScreen> {
                 ),
                 const SizedBox(height: 8),
 
+                // Professor Name
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.person,
+                      size: 16,
+                      color: Color(0xFFA855F7),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'By ${event['professorName']}',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFFA855F7),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+
                 // Description
                 Text(
-                  event.description,
+                  event['description'],
                   style: const TextStyle(
                     fontSize: 14,
                     color: Color(0xFF6B7280),
                   ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 16),
 
@@ -330,12 +444,12 @@ class _EventsScreenState extends State<EventsScreen> {
                   children: [
                     _buildDetailRow(
                       Icons.calendar_today,
-                      _formatDate(event.date),
+                      _formatDate(event['date']),
                     ),
                     const SizedBox(height: 8),
-                    _buildDetailRow(Icons.access_time, event.time),
+                    _buildDetailRow(Icons.access_time, event['time']),
                     const SizedBox(height: 8),
-                    _buildDetailRow(Icons.location_on, event.location),
+                    _buildDetailRow(Icons.location_on, event['location']),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -401,31 +515,46 @@ class _EventsScreenState extends State<EventsScreen> {
           Icon(Icons.calendar_today, size: 64, color: Colors.grey[300]),
           const SizedBox(height: 16),
           Text(
-            'No events found matching your criteria',
+            _searchQuery.isNotEmpty || _selectedType != 'all'
+                ? 'No events found matching your criteria'
+                : 'No events available yet',
             style: TextStyle(fontSize: 16, color: Colors.grey[500]),
           ),
+          if (_searchQuery.isEmpty && _selectedType == 'all') ...[
+            const SizedBox(height: 8),
+            Text(
+              'Check back later for upcoming events',
+              style: TextStyle(fontSize: 14, color: Colors.grey[400]),
+            ),
+          ],
         ],
       ),
     );
   }
 
   String _formatDate(String dateString) {
-    final date = DateTime.parse(dateString);
-    final months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    return '${months[date.month - 1]} ${date.day}, ${date.year}';
+    if (dateString.isEmpty) return 'TBD';
+
+    try {
+      final date = DateTime.parse(dateString);
+      final months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
+      return '${months[date.month - 1]} ${date.day}, ${date.year}';
+    } catch (e) {
+      return dateString;
+    }
   }
 
   @override
@@ -435,106 +564,142 @@ class _EventsScreenState extends State<EventsScreen> {
   }
 }
 
-// Mock Data
-final mockEvents = [
-  Event(
-      id: '1',
-      title: 'AI & Machine Learning Workshop',
-      type: 'workshop',
-      date: '2025-01-15',
-      time: '10:00 AM - 4:00 PM',
-      location: 'Computer Lab A',
-      description: 'Learn the fundamentals of AI and ML with hands-on projects',
-      imageUrl:
-          'https://images.unsplash.com/photo-1555255707-c07966088b7b?w=800&q=80',
-    )
-    ..capacity = 50
-    ..registered = 32
-    ..organizer = 'CS Department',
-  Event(
-      id: '2',
-      title: 'Annual Hackathon 2025',
-      type: 'hackathon',
-      date: '2025-01-20',
-      time: '9:00 AM - 9:00 PM',
-      location: 'Main Auditorium',
-      description: '24-hour coding challenge with prizes worth \$10,000',
-      imageUrl:
-          'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=800&q=80',
-    )
-    ..capacity = 100
-    ..registered = 78
-    ..organizer = 'Tech Club',
-  Event(
-      id: '3',
-      title: 'Web Development Bootcamp',
-      type: 'workshop',
-      date: '2025-01-18',
-      time: '2:00 PM - 6:00 PM',
-      location: 'Online',
-      description: 'Master React, Node.js, and modern web technologies',
-      imageUrl:
-          'https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=800&q=80',
-    )
-    ..capacity = 80
-    ..registered = 45
-    ..organizer = 'Code Academy',
-  Event(
-      id: '4',
-      title: 'Tech Career Fair',
-      type: 'networking',
-      date: '2025-01-25',
-      time: '11:00 AM - 5:00 PM',
-      location: 'Student Center',
-      description: 'Meet recruiters from top tech companies',
-      imageUrl:
-          'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&q=80',
-    )
-    ..capacity = 200
-    ..registered = 156
-    ..organizer = 'Career Services',
-  Event(
-      id: '5',
-      title: 'Cybersecurity Seminar',
-      type: 'seminar',
-      date: '2025-01-22',
-      time: '3:00 PM - 5:00 PM',
-      location: 'Lecture Hall B',
-      description:
-          'Learn about the latest security threats and defense strategies',
-      imageUrl:
-          'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=800&q=80',
-    )
-    ..capacity = 60
-    ..registered = 28
-    ..organizer = 'InfoSec Society',
-  Event(
-      id: '6',
-      title: 'Cloud Computing Summit',
-      type: 'seminar',
-      date: '2025-01-28',
-      time: '1:00 PM - 4:00 PM',
-      location: 'Conference Room',
-      description: 'Explore AWS, Azure, and Google Cloud Platform',
-      imageUrl:
-          'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=800&q=80',
-    )
-    ..capacity = 40
-    ..registered = 35
-    ..organizer = 'Cloud Computing Club',
-];
+// Registration Dialog
+class EventRegistrationDialog extends StatelessWidget {
+  final Map<String, dynamic> event;
+  final VoidCallback onRegistered;
 
-// Extended Event Model with additional properties
-extension EventExtension on Event {
-  set capacity(int value) => _capacity = value;
-  set registered(int value) => _registered = value;
-  set organizer(String value) => _organizer = value;
+  const EventRegistrationDialog({
+    Key? key,
+    required this.event,
+    required this.onRegistered,
+  }) : super(key: key);
 
-  int get capacity => _capacity;
-  int get registered => _registered;
-  String get organizer => _organizer;
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Register for Event'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Do you want to register for "${event['title']}"?'),
+          const SizedBox(height: 16),
+          Text(
+            'Event by: ${event['professorName']}',
+            style: const TextStyle(
+              color: Color(0xFFA855F7),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () async {
+            await _registerForEvent(context);
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF3B82F6),
+          ),
+          child: const Text('Register'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _registerForEvent(BuildContext context) async {
+    final User? currentUser = FirebaseAuth.instance.currentUser;
+
+    if (currentUser == null) {
+      if (context.mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You must be logged in to register'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      // Check if already registered
+      DocumentSnapshot regCheck = await FirebaseFirestore.instance
+          .collection('events')
+          .doc(event['id'])
+          .collection('registrations')
+          .doc(currentUser.uid)
+          .get();
+
+      if (regCheck.exists) {
+        if (context.mounted) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('You are already registered for this event'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Get student info
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .get();
+
+      Map<String, dynamic>? userData = userDoc.data() as Map<String, dynamic>?;
+
+      // Register student
+      await FirebaseFirestore.instance
+          .collection('events')
+          .doc(event['id'])
+          .collection('registrations')
+          .doc(currentUser.uid)
+          .set({
+            'studentId': currentUser.uid,
+            'studentName': userData?['fullName'] ?? 'Unknown Student',
+            'studentEmail': userData?['email'] ?? currentUser.email,
+            'registeredAt': FieldValue.serverTimestamp(),
+          });
+
+      // Update registered count
+      await FirebaseFirestore.instance
+          .collection('events')
+          .doc(event['id'])
+          .update({'registeredCount': FieldValue.increment(1)});
+
+      // Update student's event count
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .update({'stats.eventsAttended': FieldValue.increment(1)});
+
+      if (context.mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Successfully registered for event!'),
+            backgroundColor: Color(0xFF10B981),
+          ),
+        );
+        onRegistered();
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
 }
-
-int _capacity = 0;
-int _registered = 0;
-String _organizer = '';

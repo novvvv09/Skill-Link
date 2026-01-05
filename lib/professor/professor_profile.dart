@@ -99,8 +99,8 @@ class _ProfessorProfileScreenState extends State<ProfessorProfileScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
+        title: const Text('Log-out'),
+        content: const Text('Are you sure you want to log-out?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -115,7 +115,7 @@ class _ProfessorProfileScreenState extends State<ProfessorProfileScreen> {
               }
             },
             child: const Text(
-              'Logout',
+              'Log-out',
               style: TextStyle(color: Color(0xFFEF4444)),
             ),
           ),
@@ -511,7 +511,7 @@ class _ProfessorProfileScreenState extends State<ProfessorProfileScreen> {
                       Icon(Icons.logout, size: 20),
                       SizedBox(width: 8),
                       Text(
-                        'Logout',
+                        'Log-out',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
