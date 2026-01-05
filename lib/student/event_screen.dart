@@ -59,12 +59,16 @@ class _EventsScreenState extends State<EventsScreen> {
       }
 
       setState(() {
-        _events = events;
+        // Combine Firebase events with mock events
+        _events = [...events, ..._getMockEvents()];
         _isLoading = false;
       });
     } catch (e) {
       print('Error loading events: $e');
-      setState(() => _isLoading = false);
+      setState(() {
+        _events = _getMockEvents(); // Use mock data if Firebase fails
+        _isLoading = false;
+      });
     }
   }
 
@@ -562,6 +566,91 @@ class _EventsScreenState extends State<EventsScreen> {
     _searchController.dispose();
     super.dispose();
   }
+
+  //Mock events for demo purposes
+  List<Map<String, dynamic>> _getMockEvents() {
+    return [
+      {
+        'id': 'mock1',
+        'title': 'AI & Machine Learning Workshop',
+        'description':
+            'Learn the fundamentals of AI and ML with hands-on projects',
+        'category': 'workshop',
+        'date': '2025-01-15',
+        'time': '10:00 AM - 4:00 PM',
+        'location': 'Computer Lab A',
+        'capacity': 50,
+        'registeredCount': 32,
+        'professorName': 'Prof. Sarah Johnson',
+        'createdBy': 'demo',
+        'imageUrl':
+            'https://images.unsplash.com/photo-1555255707-c07966088b7b?w=800&q=80',
+      },
+      {
+        'id': 'mock2',
+        'title': 'Annual Hackathon 2025',
+        'description': '24-hour coding challenge with prizes worth \$10,000',
+        'category': 'hackathon',
+        'date': '2025-01-20',
+        'time': '9:00 AM - 9:00 PM',
+        'location': 'Main Auditorium',
+        'capacity': 100,
+        'registeredCount': 78,
+        'professorName': 'Prof. Michael Chen',
+        'createdBy': 'demo',
+        'imageUrl':
+            'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=800&q=80',
+      },
+      {
+        'id': 'mock3',
+        'title': 'Web Development Bootcamp',
+        'description': 'Master React, Node.js, and modern web technologies',
+        'category': 'workshop',
+        'date': '2025-01-18',
+        'time': '2:00 PM - 6:00 PM',
+        'location': 'Online',
+        'capacity': 80,
+        'registeredCount': 45,
+        'professorName': 'Prof. Emily Rodriguez',
+        'createdBy': 'demo',
+        'imageUrl':
+            'https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=800&q=80',
+      },
+      {
+        'id': 'mock4',
+        'title': 'Tech Career Fair',
+        'description': 'Meet recruiters from top tech companies',
+        'category': 'networking',
+        'date': '2025-01-25',
+        'time': '11:00 AM - 5:00 PM',
+        'location': 'Student Center',
+        'capacity': 200,
+        'registeredCount': 156,
+        'professorName': 'Prof. David Kim',
+        'createdBy': 'demo',
+        'imageUrl':
+            'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&q=80',
+      },
+      {
+        'id': 'mock5',
+        'title': 'Cybersecurity Seminar',
+        'description':
+            'Learn about the latest security threats and defense strategies',
+        'category': 'seminar',
+        'date': '2025-01-22',
+        'time': '3:00 PM - 5:00 PM',
+        'location': 'Lecture Hall B',
+        'capacity': 60,
+        'registeredCount': 28,
+        'professorName': 'Prof. Jennifer Lee',
+        'createdBy': 'demo',
+        'imageUrl':
+            'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=800&q=80',
+      },
+    ];
+  }
+
+  //Mock events for demo purposes
 }
 
 // Registration Dialog
