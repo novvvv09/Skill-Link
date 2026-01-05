@@ -43,8 +43,7 @@ class _ProfessorMyEventsScreenState extends State<ProfessorMyEventsScreen> {
       // Fetch events created by this professor
       QuerySnapshot eventSnapshot = await FirebaseFirestore.instance
           .collection('events')
-          .where('createdBy', isEqualTo: _currentUser!.uid)
-          .orderBy('createdAt', descending: true)
+          .where('createdBy', isEqualTo: _currentUser.uid)
           .get();
 
       List<Map<String, dynamic>> events = [];
@@ -132,7 +131,9 @@ class _ProfessorMyEventsScreenState extends State<ProfessorMyEventsScreen> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color.fromARGB(255, 230, 228, 228),
+            ),
             child: const Text('Delete'),
           ),
         ],
