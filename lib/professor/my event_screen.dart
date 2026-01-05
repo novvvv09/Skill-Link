@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ProfessorMyEventsScreen extends StatefulWidget {
   final Function(int) onViewEvent;
@@ -18,211 +20,378 @@ class ProfessorMyEventsScreen extends StatefulWidget {
 class _ProfessorMyEventsScreenState extends State<ProfessorMyEventsScreen> {
   String _filter = 'all';
   final TextEditingController _searchController = TextEditingController();
+  final User? _currentUser = FirebaseAuth.instance.currentUser;
 
-  final List<Map<String, dynamic>> _events = [
-    {
-      'id': 1,
-      'title': 'Flutter Workshop',
-      'description': 'Master Flutter development with hands-on projects',
-      'date': 'Dec 28, 2025',
-      'time': '2:00 PM',
-      'location': 'Room 301',
-      'registered': 45,
-      'capacity': 50,
-      'status': 'upcoming',
-      'image':
-          'https://images.unsplash.com/photo-1736066330610-c102cab4e942?w=800&q=80',
-    },
-    {
-      'id': 2,
-      'title': 'Web Dev Bootcamp',
-      'description': 'Build modern web apps with React & Node.js',
-      'date': 'Dec 30, 2025',
-      'time': '10:00 AM',
-      'location': 'Lab A',
-      'registered': 30,
-      'capacity': 35,
-      'status': 'upcoming',
-      'image':
-          'https://images.unsplash.com/photo-1606761568499-6d2451b23c66?w=800&q=80',
-    },
-    {
-      'id': 3,
-      'title': 'AI Workshop Series',
-      'description': 'Introduction to Machine Learning and AI',
-      'date': 'Dec 20, 2025',
-      'time': '3:00 PM',
-      'location': 'Main Hall',
-      'registered': 50,
-      'capacity': 50,
-      'status': 'past',
-      'image':
-          'https://images.unsplash.com/photo-1716703435453-a7733d600d68?w=800&q=80',
-    },
-  ];
+  List<Map<String, dynamic>> _events = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMyEvents();
+  }
+
+  Future<void> _loadMyEvents() async {
+    if (_currentUser == null) {
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // Fetch events created by this professor
+      QuerySnapshot eventSnapshot = await FirebaseFirestore.instance
+          .collection('events')
+          .where('createdBy', isEqualTo: _currentUser!.uid)
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      List<Map<String, dynamic>> events = [];
+
+      for (var doc in eventSnapshot.docs) {
+        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+
+        events.add({
+          'id': doc.id,
+          'title': data['title'] ?? 'Untitled Event',
+          'description': data['description'] ?? 'No description',
+          'date': _formatDate(data['date'] ?? ''),
+          'time': data['time'] ?? 'TBD',
+          'location': data['location'] ?? 'TBD',
+          'registered': data['registeredCount'] ?? 0,
+          'capacity': data['capacity'] ?? 50,
+          'status': data['status'] ?? 'active',
+          'category': data['category'] ?? 'workshop',
+          'image':
+              data['imageUrl'] ??
+              'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&q=80',
+        });
+      }
+
+      setState(() {
+        _events = events;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading events: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  String _formatDate(String dateString) {
+    if (dateString.isEmpty) return 'TBD';
+
+    try {
+      final date = DateTime.parse(dateString);
+      final months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
+      return '${months[date.month - 1]} ${date.day}, ${date.year}';
+    } catch (e) {
+      return dateString;
+    }
+  }
 
   List<Map<String, dynamic>> get _filteredEvents {
     if (_filter == 'all') return _events;
-    return _events.where((e) => e['status'] == _filter).toList();
+    if (_filter == 'upcoming') {
+      return _events.where((e) => e['status'] == 'active').toList();
+    }
+    return _events
+        .where((e) => e['status'] == 'completed' || e['status'] == 'cancelled')
+        .toList();
   }
 
   int get _upcomingCount =>
-      _events.where((e) => e['status'] == 'upcoming').length;
-  int get _pastCount => _events.where((e) => e['status'] == 'past').length;
+      _events.where((e) => e['status'] == 'active').length;
+  int get _pastCount => _events.where((e) => e['status'] != 'active').length;
+
+  Future<void> _deleteEvent(String eventId, String title) async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Event'),
+        content: Text('Are you sure you want to delete "$title"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('events')
+          .doc(eventId)
+          .delete();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Event deleted successfully'),
+            backgroundColor: Color(0xFF10B981),
+          ),
+        );
+        _loadMyEvents(); // Reload events
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting event: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 48, 20, 100),
-          child: Column(
-            children: [
-              // Header
-              Container(
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFA855F7), Color(0xFF6366F1)],
-                  ),
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFA855F7).withOpacity(0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 16,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'My Events',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: _loadMyEvents,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 48, 20, 100),
+                  child: Column(
+                    children: [
+                      // Header
+                      Container(
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFFA855F7), Color(0xFF6366F1)],
+                          ),
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFFA855F7).withOpacity(0.3),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 16,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'My Events',
+                                        style: TextStyle(
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      SizedBox(height: 4),
+                                      Text(
+                                        'Manage all your created events',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Color(0xFFE9D5FF),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.refresh,
+                                    color: Colors.white,
+                                  ),
+                                  onPressed: _loadMyEvents,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Manage all your created events',
-                      style: TextStyle(fontSize: 14, color: Colors.purple[100]),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
+                      const SizedBox(height: 16),
 
-              // Search Bar
-              TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  hintText: 'Search events...',
-                  prefixIcon: const Icon(
-                    Icons.search,
-                    color: Color(0xFF9CA3AF),
-                  ),
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(
-                      color: Color(0xFFA855F7),
-                      width: 2,
-                    ),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-              ),
-              const SizedBox(height: 16),
+                      // Search Bar
+                      TextField(
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          hintText: 'Search events...',
+                          prefixIcon: const Icon(
+                            Icons.search,
+                            color: Color(0xFF9CA3AF),
+                          ),
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFE5E7EB),
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFE5E7EB),
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFA855F7),
+                              width: 2,
+                            ),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
 
-              // Filter Tabs
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _buildFilterChip('all', 'All Events (${_events.length})'),
-                    const SizedBox(width: 8),
-                    _buildFilterChip('upcoming', 'Upcoming ($_upcomingCount)'),
-                    const SizedBox(width: 8),
-                    _buildFilterChip('past', 'Past ($_pastCount)'),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
+                      // Filter Tabs
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            _buildFilterChip(
+                              'all',
+                              'All Events (${_events.length})',
+                            ),
+                            const SizedBox(width: 8),
+                            _buildFilterChip(
+                              'upcoming',
+                              'Active ($_upcomingCount)',
+                            ),
+                            const SizedBox(width: 8),
+                            _buildFilterChip('past', 'Past ($_pastCount)'),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
 
-              // Events List
-              ..._filteredEvents.map(
-                (event) => Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: _buildEventCard(event),
-                ),
-              ),
+                      // Events List
+                      if (_filteredEvents.isEmpty)
+                        _buildEmptyState()
+                      else
+                        ..._filteredEvents.map(
+                          (event) => Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: _buildEventCard(event),
+                          ),
+                        ),
 
-              const SizedBox(height: 16),
+                      const SizedBox(height: 16),
 
-              // Create New Event Button
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFA855F7), Color(0xFF6366F1)],
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFFA855F7).withOpacity(0.3),
-                        blurRadius: 12,
-                        offset: const Offset(0, 6),
+                      // Create New Event Button
+                      SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFA855F7), Color(0xFF6366F1)],
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFFA855F7).withOpacity(0.3),
+                                blurRadius: 12,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                          ),
+                          child: ElevatedButton(
+                            onPressed: () => widget.onNavigate(2),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.transparent,
+                              shadowColor: Colors.transparent,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.add, size: 20, color: Colors.white),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Create New Event',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
-                  child: ElevatedButton(
-                    onPressed: () => widget.onNavigate(2),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color.fromARGB(255, 252, 252, 252),
-                      shadowColor: const Color.fromARGB(0, 223, 222, 225),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.calendar_today, size: 20),
-                        SizedBox(width: 8),
-                        Text(
-                          'Create New Event',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ),
               ),
-            ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Container(
+      padding: const EdgeInsets.all(48),
+      child: Column(
+        children: [
+          Icon(Icons.event_busy, size: 64, color: Colors.grey[300]),
+          const SizedBox(height: 16),
+          Text(
+            'No events yet',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[600],
+            ),
           ),
-        ),
+          const SizedBox(height: 8),
+          Text(
+            'Create your first event to get started',
+            style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }
@@ -268,7 +437,7 @@ class _ProfessorMyEventsScreenState extends State<ProfessorMyEventsScreen> {
   Widget _buildEventCard(Map<String, dynamic> event) {
     final registered = event['registered'] as int;
     final capacity = event['capacity'] as int;
-    final percentage = (registered / capacity * 100).round();
+    final percentage = capacity > 0 ? (registered / capacity * 100).round() : 0;
 
     return Container(
       decoration: BoxDecoration(
@@ -288,7 +457,7 @@ class _ProfessorMyEventsScreenState extends State<ProfessorMyEventsScreen> {
         children: [
           // Event Image
           GestureDetector(
-            onTap: () => widget.onViewEvent(event['id']),
+            onTap: () => widget.onViewEvent(1),
             child: Stack(
               children: [
                 ClipRRect(
@@ -332,17 +501,17 @@ class _ProfessorMyEventsScreenState extends State<ProfessorMyEventsScreen> {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: event['status'] == 'upcoming'
+                      color: event['status'] == 'active'
                           ? const Color(0xFFD1FAE5)
                           : const Color(0xFFF3F4F6),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      event['status'] == 'upcoming' ? 'Active' : 'Completed',
+                      event['status'] == 'active' ? 'Active' : 'Completed',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: event['status'] == 'upcoming'
+                        color: event['status'] == 'active'
                             ? const Color(0xFF10B981)
                             : const Color(0xFF6B7280),
                       ),
@@ -360,7 +529,7 @@ class _ProfessorMyEventsScreenState extends State<ProfessorMyEventsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 GestureDetector(
-                  onTap: () => widget.onViewEvent(event['id']),
+                  onTap: () => widget.onViewEvent(1),
                   child: Text(
                     event['title'],
                     style: const TextStyle(
@@ -377,6 +546,8 @@ class _ProfessorMyEventsScreenState extends State<ProfessorMyEventsScreen> {
                     fontSize: 14,
                     color: Color(0xFF6B7280),
                   ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 12),
 
@@ -426,7 +597,7 @@ class _ProfessorMyEventsScreenState extends State<ProfessorMyEventsScreen> {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(
-                    value: registered / capacity,
+                    value: capacity > 0 ? registered / capacity : 0,
                     minHeight: 8,
                     backgroundColor: const Color(0xFFE5E7EB),
                     valueColor: const AlwaysStoppedAnimation<Color>(
@@ -442,7 +613,11 @@ class _ProfessorMyEventsScreenState extends State<ProfessorMyEventsScreen> {
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: () {
-                          // Handle edit
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Edit feature coming soon'),
+                            ),
+                          );
                         },
                         icon: const Icon(Icons.edit, size: 16),
                         label: const Text('Edit'),
@@ -459,9 +634,8 @@ class _ProfessorMyEventsScreenState extends State<ProfessorMyEventsScreen> {
                     ),
                     const SizedBox(width: 8),
                     ElevatedButton(
-                      onPressed: () {
-                        // Handle delete
-                      },
+                      onPressed: () =>
+                          _deleteEvent(event['id'], event['title']),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFFEE2E2),
                         foregroundColor: const Color(0xFFEF4444),
