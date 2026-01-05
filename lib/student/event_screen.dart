@@ -1,3 +1,5 @@
+// ignore_for_file: unused_import
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -12,7 +14,6 @@ class EventsScreen extends StatefulWidget {
 
 class _EventsScreenState extends State<EventsScreen> {
   final TextEditingController _searchController = TextEditingController();
-  final User? _currentUser = FirebaseAuth.instance.currentUser;
 
   String _searchQuery = '';
   String _selectedType = 'all';
@@ -92,11 +93,11 @@ class _EventsScreenState extends State<EventsScreen> {
       case 'hackathon':
         return const Color(0xFFA855F7);
       case 'seminar':
-        return const Color(0xFF10B981);
+        return const Color(0xFF3B82F6);
       case 'networking':
-        return const Color(0xFFF97316);
+        return const Color(0xFFA855F7);
       default:
-        return const Color(0xFF6B7280);
+        return const Color(0xFF3B82F6);
     }
   }
 
@@ -459,17 +460,23 @@ class _EventsScreenState extends State<EventsScreen> {
                 const SizedBox(height: 16),
 
                 // Register Button
-                SizedBox(
+                Container(
                   width: double.infinity,
                   height: 44,
+                  decoration: BoxDecoration(
+                    gradient: isEventFull
+                        ? null
+                        : const LinearGradient(
+                            colors: [Color(0xFF3B82F6), Color(0xFF9333EA)],
+                          ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                   child: ElevatedButton(
                     onPressed: isEventFull
                         ? null
                         : () => _showRegistrationModal(event),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: isEventFull
-                          ? const Color(0xFFD1D5DB)
-                          : const Color(0xFF3B82F6),
+                      backgroundColor: Colors.transparent,
                       foregroundColor: isEventFull
                           ? const Color(0xFF6B7280)
                           : Colors.white,
@@ -478,6 +485,7 @@ class _EventsScreenState extends State<EventsScreen> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
+                      shadowColor: Colors.transparent,
                     ),
                     child: Text(
                       isEventFull ? 'Event Full' : 'Register Now',
@@ -693,7 +701,7 @@ class EventRegistrationDialog extends StatelessWidget {
             await _registerForEvent(context);
           },
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF3B82F6),
+            backgroundColor: const Color.fromARGB(255, 232, 229, 229),
           ),
           child: const Text('Register'),
         ),
@@ -732,7 +740,7 @@ class EventRegistrationDialog extends StatelessWidget {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('You are already registered for this event'),
-              backgroundColor: Colors.orange,
+              backgroundColor: Color(0xFF10B981),
             ),
           );
         }
