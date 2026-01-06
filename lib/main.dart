@@ -196,9 +196,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
       }
 
       // Also get total available events and projects
-      QuerySnapshot eventsSnapshot = await FirebaseFirestore.instance
-          .collection('events')
-          .get();
+      await FirebaseFirestore.instance.collection('events').get();
 
       // ignore: unused_local_variable
       QuerySnapshot projectsSnapshot = await FirebaseFirestore.instance
