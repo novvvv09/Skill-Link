@@ -728,7 +728,7 @@ class _PostProjectModalState extends State<PostProjectModal> {
         'imageUrl': _imageUrlController.text.trim(),
         'likes': 0,
         'comments': 0,
-        'createdAt': FieldValue.serverTimestamp(),
+        'createdAt': Timestamp.fromDate(DateTime.now()),
       };
 
       print('Project data to save: $projectData');
