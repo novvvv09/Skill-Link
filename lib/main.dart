@@ -407,7 +407,7 @@ class ProfessorHomeScreen extends StatefulWidget {
 
 class _ProfessorHomeScreenState extends State<ProfessorHomeScreen> {
   int _currentIndex = 0;
-  int? _selectedEventId;
+  String? _selectedEventId;
   bool _showingEventDetails = false;
 
   List<Widget> _getScreens() {

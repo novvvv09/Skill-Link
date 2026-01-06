@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
 class EventDetailsScreen extends StatefulWidget {
-  final int eventId;
+  final String eventId; // Changed from int to String
   final Function(int) onNavigate;
 
   const EventDetailsScreen({
@@ -17,72 +19,71 @@ class EventDetailsScreen extends StatefulWidget {
 class _EventDetailsScreenState extends State<EventDetailsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // Mock event data
-  final Map<String, dynamic> _event = {
-    'title': 'Flutter Workshop',
-    'description':
-        'Master Flutter development with hands-on projects. This comprehensive workshop will cover everything from basics to advanced concepts including state management, animations, and API integration. Participants will build a complete mobile application.',
-    'date': 'Dec 28, 2025',
-    'time': '2:00 PM - 5:00 PM',
-    'location': 'Room 301, CS Building',
-    'registered': 45,
-    'capacity': 50,
-    'status': 'upcoming',
-    'category': 'Workshop',
-    'image':
-        'https://images.unsplash.com/photo-1736066330610-c102cab4e942?w=800&q=80',
-  };
-
-  final List<Map<String, String>> _attendees = [
-    {
-      'id': '1',
-      'name': 'John Smith',
-      'email': 'john.smith@university.edu',
-      'registeredDate': 'Dec 20, 2025',
-      'year': '3rd Year',
-    },
-    {
-      'id': '2',
-      'name': 'Emma Wilson',
-      'email': 'emma.wilson@university.edu',
-      'registeredDate': 'Dec 21, 2025',
-      'year': '2nd Year',
-    },
-    {
-      'id': '3',
-      'name': 'Michael Brown',
-      'email': 'michael.brown@university.edu',
-      'registeredDate': 'Dec 21, 2025',
-      'year': '4th Year',
-    },
-    {
-      'id': '4',
-      'name': 'Sophia Davis',
-      'email': 'sophia.davis@university.edu',
-      'registeredDate': 'Dec 22, 2025',
-      'year': '3rd Year',
-    },
-    {
-      'id': '5',
-      'name': 'James Miller',
-      'email': 'james.miller@university.edu',
-      'registeredDate': 'Dec 22, 2025',
-      'year': '2nd Year',
-    },
-    {
-      'id': '6',
-      'name': 'Olivia Garcia',
-      'email': 'olivia.garcia@university.edu',
-      'registeredDate': 'Dec 23, 2025',
-      'year': '1st Year',
-    },
-  ];
+  Map<String, dynamic>? _event;
+  List<Map<String, dynamic>> _attendees = [];
+  bool _isLoading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _loadEventData();
+  }
+
+  Future<void> _loadEventData() async {
+    try {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+
+      // Fetch event document
+      final eventDoc = await _firestore
+          .collection('events')
+          .doc(widget.eventId)
+          .get();
+
+      if (!eventDoc.exists) {
+        setState(() {
+          _error = 'Event not found';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // Fetch registrations subcollection
+      final registrationsSnapshot = await _firestore
+          .collection('events')
+          .doc(widget.eventId)
+          .collection('registrations')
+          .orderBy('registeredAt', descending: true)
+          .get();
+
+      final attendees = registrationsSnapshot.docs.map((doc) {
+        final data = doc.data();
+        return {
+          'id': doc.id,
+          'name': data['studentName'] ?? 'Unknown',
+          'email': data['studentEmail'] ?? 'No email',
+          'registeredAt': data['registeredAt'] as Timestamp?,
+          'studentId': data['studentId'] ?? '',
+        };
+      }).toList();
+
+      setState(() {
+        _event = eventDoc.data();
+        _attendees = attendees;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = 'Error loading event: $e';
+        _isLoading = false;
+      });
+    }
   }
 
   @override
@@ -91,11 +92,74 @@ class _EventDetailsScreenState extends State<EventDetailsScreen>
     super.dispose();
   }
 
+  String _formatDate(dynamic date) {
+    if (date == null) return 'Not set';
+
+    try {
+      if (date is Timestamp) {
+        return DateFormat('MMM dd, yyyy').format(date.toDate());
+      } else if (date is String) {
+        final parsedDate = DateTime.parse(date);
+        return DateFormat('MMM dd, yyyy').format(parsedDate);
+      }
+    } catch (e) {
+      return date.toString();
+    }
+    return 'Invalid date';
+  }
+
+  String _formatDateTime(Timestamp? timestamp) {
+    if (timestamp == null) return 'Unknown';
+    final date = timestamp.toDate();
+    return DateFormat('MMM dd, yyyy').format(date);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final registered = _event['registered'] as int;
-    final capacity = _event['capacity'] as int;
-    final percentage = (registered / capacity * 100).round();
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        body: const Center(
+          child: CircularProgressIndicator(color: Color(0xFFA855F7)),
+        ),
+      );
+    }
+
+    if (_error != null || _event == null) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.error_outline,
+                size: 64,
+                color: Color(0xFFEF4444),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                _error ?? 'Event not found',
+                style: const TextStyle(fontSize: 16, color: Color(0xFF6B7280)),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () => widget.onNavigate(1),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFA855F7),
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Back to My Events'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final registered = _event!['registeredCount'] ?? _attendees.length;
+    final capacity = _event!['capacity'] ?? 50;
+    final percentage = capacity > 0 ? (registered / capacity * 100).round() : 0;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -139,22 +203,19 @@ class _EventDetailsScreenState extends State<EventDetailsScreen>
                       children: [
                         ClipRRect(
                           borderRadius: BorderRadius.circular(24),
-                          child: Image.network(
-                            _event['image'],
-                            height: 192,
-                            width: double.infinity,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                height: 192,
-                                color: Colors.grey[200],
-                                child: const Icon(
-                                  Icons.image_not_supported,
-                                  size: 48,
-                                ),
-                              );
-                            },
-                          ),
+                          child:
+                              _event!['imageUrl'] != null &&
+                                  _event!['imageUrl'].toString().isNotEmpty
+                              ? Image.network(
+                                  _event!['imageUrl'],
+                                  height: 192,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return _buildPlaceholderImage();
+                                  },
+                                )
+                              : _buildPlaceholderImage(),
                         ),
                         Container(
                           height: 192,
@@ -187,7 +248,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen>
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                                 child: Text(
-                                  _event['status'] == 'upcoming'
+                                  _event!['status'] == 'active'
                                       ? 'Active'
                                       : 'Completed',
                                   style: const TextStyle(
@@ -199,7 +260,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen>
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                _event['title'],
+                                _event!['title'] ?? 'Untitled Event',
                                 style: const TextStyle(
                                   fontSize: 24,
                                   fontWeight: FontWeight.bold,
@@ -208,7 +269,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen>
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                _event['category'],
+                                _event!['category'] ?? 'Event',
                                 style: TextStyle(
                                   fontSize: 14,
                                   color: Colors.white.withOpacity(0.9),
@@ -279,7 +340,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen>
                         unselectedLabelColor: const Color(0xFF6B7280),
                         tabs: [
                           const Tab(text: 'Event Details'),
-                          Tab(text: 'Attendees ($registered)'),
+                          Tab(text: 'Attendees (${_attendees.length})'),
                         ],
                       ),
                     ),
@@ -292,7 +353,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen>
                         controller: _tabController,
                         children: [
                           _buildDetailsTab(registered, capacity, percentage),
-                          _buildAttendeesTab(registered),
+                          _buildAttendeesTab(),
                         ],
                       ),
                     ),
@@ -303,6 +364,20 @@ class _EventDetailsScreenState extends State<EventDetailsScreen>
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildPlaceholderImage() {
+    return Container(
+      height: 192,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFA855F7), Color(0xFF6366F1)],
+        ),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: const Icon(Icons.event, size: 64, color: Colors.white),
     );
   }
 
@@ -339,7 +414,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen>
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  _event['description'],
+                  _event!['description'] ?? 'No description available',
                   style: const TextStyle(
                     fontSize: 14,
                     color: Color(0xFF6B7280),
@@ -382,7 +457,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen>
                 _buildInfoRow(
                   Icons.calendar_today,
                   'Date',
-                  _event['date'],
+                  _formatDate(_event!['date']),
                   const Color(0xFFF3E8FF),
                   const Color(0xFFA855F7),
                 ),
@@ -390,7 +465,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen>
                 _buildInfoRow(
                   Icons.access_time,
                   'Time',
-                  _event['time'],
+                  _event!['time'] ?? 'Not set',
                   const Color(0xFFE0E7FF),
                   const Color(0xFF6366F1),
                 ),
@@ -398,9 +473,17 @@ class _EventDetailsScreenState extends State<EventDetailsScreen>
                 _buildInfoRow(
                   Icons.location_on,
                   'Location',
-                  _event['location'],
+                  _event!['location'] ?? 'Not set',
                   const Color(0xFFDCEEFE),
                   const Color(0xFF3B82F6),
+                ),
+                const SizedBox(height: 12),
+                _buildInfoRow(
+                  Icons.person,
+                  'Professor',
+                  _event!['professorName'] ?? 'Unknown',
+                  const Color(0xFFD1FAE5),
+                  const Color(0xFF10B981),
                 ),
               ],
             ),
@@ -443,7 +526,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen>
                       style: TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
                     ),
                     Text(
-                      '$registered/$capacity',
+                      '${_attendees.length}/$capacity',
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -456,7 +539,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen>
                 ClipRRect(
                   borderRadius: BorderRadius.circular(6),
                   child: LinearProgressIndicator(
-                    value: registered / capacity,
+                    value: capacity > 0 ? _attendees.length / capacity : 0,
                     minHeight: 12,
                     backgroundColor: const Color(0xFFE5E7EB),
                     valueColor: const AlwaysStoppedAnimation<Color>(
@@ -471,7 +554,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen>
                       child: Column(
                         children: [
                           Text(
-                            '$registered',
+                            '${_attendees.length}',
                             style: const TextStyle(
                               fontSize: 28,
                               fontWeight: FontWeight.bold,
@@ -493,7 +576,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen>
                       child: Column(
                         children: [
                           Text(
-                            '${capacity - registered}',
+                            '${capacity - _attendees.length}',
                             style: const TextStyle(
                               fontSize: 28,
                               fontWeight: FontWeight.bold,
@@ -543,7 +626,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen>
     );
   }
 
-  Widget _buildAttendeesTab(int registered) {
+  Widget _buildAttendeesTab() {
     return SingleChildScrollView(
       child: Column(
         children: [
@@ -587,45 +670,63 @@ class _EventDetailsScreenState extends State<EventDetailsScreen>
           const SizedBox(height: 16),
 
           // Attendees List
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFF3F4F6)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                ..._attendees.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final attendee = entry.value;
-                  return Column(
-                    children: [
-                      if (index > 0)
-                        const Divider(height: 1, color: Color(0xFFF3F4F6)),
-                      _buildAttendeeItem(attendee),
-                    ],
-                  );
-                }),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Show More
-          if (registered > 6)
-            TextButton(
-              onPressed: () {},
-              child: Text('Show all $registered attendees'),
-              style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFFA855F7),
-                padding: const EdgeInsets.symmetric(vertical: 12),
+          if (_attendees.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(48),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFF3F4F6)),
+              ),
+              child: Column(
+                children: [
+                  Icon(Icons.people_outline, size: 64, color: Colors.grey[300]),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'No students registered yet',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF6B7280),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Students who register for this event will appear here',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 14, color: Color(0xFF9CA3AF)),
+                  ),
+                ],
+              ),
+            )
+          else
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFF3F4F6)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  ..._attendees.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final attendee = entry.value;
+                    return Column(
+                      children: [
+                        if (index > 0)
+                          const Divider(height: 1, color: Color(0xFFF3F4F6)),
+                        _buildAttendeeItem(attendee),
+                      ],
+                    );
+                  }),
+                ],
               ),
             ),
         ],
@@ -676,8 +777,12 @@ class _EventDetailsScreenState extends State<EventDetailsScreen>
     );
   }
 
-  Widget _buildAttendeeItem(Map<String, String> attendee) {
-    final initials = attendee['name']!.split(' ').map((n) => n[0]).join('');
+  Widget _buildAttendeeItem(Map<String, dynamic> attendee) {
+    final name = attendee['name'] as String;
+    final initials = name
+        .split(' ')
+        .map((n) => n.isNotEmpty ? n[0] : '')
+        .join('');
 
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -686,8 +791,8 @@ class _EventDetailsScreenState extends State<EventDetailsScreen>
           Container(
             width: 40,
             height: 40,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
                 colors: [Color(0xFFA855F7), Color(0xFF6366F1)],
               ),
               shape: BoxShape.circle,
@@ -708,7 +813,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  attendee['name']!,
+                  name,
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
@@ -718,7 +823,7 @@ class _EventDetailsScreenState extends State<EventDetailsScreen>
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  attendee['email']!,
+                  attendee['email'] as String,
                   style: const TextStyle(
                     fontSize: 12,
                     color: Color(0xFF6B7280),
@@ -731,17 +836,14 @@ class _EventDetailsScreenState extends State<EventDetailsScreen>
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(
-                attendee['year']!,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFFA855F7),
-                ),
+              const Icon(
+                Icons.check_circle,
+                size: 16,
+                color: Color(0xFF10B981),
               ),
               const SizedBox(height: 2),
               Text(
-                attendee['registeredDate']!,
+                _formatDateTime(attendee['registeredAt'] as Timestamp?),
                 style: const TextStyle(fontSize: 10, color: Color(0xFF9CA3AF)),
               ),
             ],

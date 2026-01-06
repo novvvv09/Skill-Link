@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ProfessorMyEventsScreen extends StatefulWidget {
-  final Function(int) onViewEvent;
+  final Function(String) onViewEvent; // Changed from int to String
   final Function(int) onNavigate;
 
   const ProfessorMyEventsScreen({
@@ -52,7 +52,7 @@ class _ProfessorMyEventsScreenState extends State<ProfessorMyEventsScreen> {
         Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
 
         events.add({
-          'id': doc.id,
+          'id': doc.id, // This is the Firestore document ID (String)
           'title': data['title'] ?? 'Untitled Event',
           'description': data['description'] ?? 'No description',
           'date': _formatDate(data['date'] ?? ''),
@@ -132,7 +132,7 @@ class _ProfessorMyEventsScreenState extends State<ProfessorMyEventsScreen> {
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color.fromARGB(255, 230, 228, 228),
+              backgroundColor: const Color(0xFFEF4444),
             ),
             child: const Text('Delete'),
           ),
@@ -458,7 +458,9 @@ class _ProfessorMyEventsScreenState extends State<ProfessorMyEventsScreen> {
         children: [
           // Event Image
           GestureDetector(
-            onTap: () => widget.onViewEvent(1),
+            onTap: () => widget.onViewEvent(
+              event['id'] as String,
+            ), // Pass the document ID
             child: Stack(
               children: [
                 ClipRRect(
@@ -530,7 +532,9 @@ class _ProfessorMyEventsScreenState extends State<ProfessorMyEventsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 GestureDetector(
-                  onTap: () => widget.onViewEvent(1),
+                  onTap: () => widget.onViewEvent(
+                    event['id'] as String,
+                  ), // Pass the document ID
                   child: Text(
                     event['title'],
                     style: const TextStyle(
