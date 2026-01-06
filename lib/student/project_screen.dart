@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ProjectsPage extends StatefulWidget {
   const ProjectsPage({Key? key}) : super(key: key);
@@ -10,21 +12,88 @@ class ProjectsPage extends StatefulWidget {
 
 class _ProjectsPageState extends State<ProjectsPage> {
   final TextEditingController _searchController = TextEditingController();
+  final User? _currentUser = FirebaseAuth.instance.currentUser;
   String _searchQuery = '';
-  List<Project> _projects = mockProjects;
+  List<Map<String, dynamic>> _projects = [];
+  bool _isLoading = true;
 
-  void _toggleLike(String id) {
-    setState(() {
-      _projects = _projects.map((project) {
-        if (project.id == id) {
-          return project.copyWith(
-            liked: !project.liked,
-            likes: project.liked ? project.likes - 1 : project.likes + 1,
-          );
-        }
-        return project;
+  @override
+  void initState() {
+    super.initState();
+    _loadProjects();
+  }
+
+  Future<void> _loadProjects() async {
+    setState(() => _isLoading = true);
+
+    try {
+      // Fetch all projects ordered by creation date
+      final projectsSnapshot = await FirebaseFirestore.instance
+          .collection('projects')
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      final projects = projectsSnapshot.docs.map((doc) {
+        final data = doc.data();
+        return {
+          'id': doc.id,
+          'title': data['title'] ?? 'Untitled Project',
+          'description': data['description'] ?? '',
+          'studentId': data['studentId'] ?? '',
+          'studentName': data['studentName'] ?? 'Unknown',
+          'studentEmail': data['studentEmail'] ?? '',
+          'eventId': data['eventId'] ?? '',
+          'eventTitle': data['eventTitle'] ?? 'No event',
+          'technologies': List<String>.from(data['technologies'] ?? []),
+          'githubUrl': data['githubUrl'] ?? '',
+          'liveUrl': data['liveUrl'],
+          'imageUrl': data['imageUrl'] ?? '',
+          'likes': data['likes'] ?? 0,
+          'comments': data['comments'] ?? 0,
+          'liked': false, // Check if current user liked this
+          'createdAt': data['createdAt'] as Timestamp?,
+        };
       }).toList();
-    });
+
+      setState(() {
+        _projects = projects;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading projects: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _toggleLike(
+    String projectId,
+    bool currentlyLiked,
+    int currentLikes,
+  ) async {
+    if (_currentUser == null) return;
+
+    try {
+      final newLiked = !currentlyLiked;
+      final newLikes = newLiked ? currentLikes + 1 : currentLikes - 1;
+
+      // Update Firestore
+      await FirebaseFirestore.instance
+          .collection('projects')
+          .doc(projectId)
+          .update({'likes': newLikes});
+
+      // Update local state
+      setState(() {
+        _projects = _projects.map((project) {
+          if (project['id'] == projectId) {
+            return {...project, 'liked': newLiked, 'likes': newLikes};
+          }
+          return project;
+        }).toList();
+      });
+    } catch (e) {
+      print('Error toggling like: $e');
+    }
   }
 
   void _showPostProjectModal() {
@@ -33,42 +102,24 @@ class _ProjectsPageState extends State<ProjectsPage> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => PostProjectModal(
-        onSubmit: (projectData) {
-          setState(() {
-            final newProject = Project(
-              id: DateTime.now().millisecondsSinceEpoch.toString(),
-              title: projectData['title'],
-              author: 'You',
-              authorAvatar:
-                  'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&q=80',
-              description: projectData['description'],
-              technologies: projectData['technologies'],
-              githubUrl: projectData['githubUrl'],
-              liveUrl: projectData['liveUrl'],
-              imageUrl: projectData['imageUrl'],
-              likes: 0,
-              comments: 0,
-              liked: false,
-              postedDate: DateTime.now(),
-            );
-            _projects = [newProject, ..._projects];
-          });
-          Navigator.pop(context);
+        onSubmit: () {
+          _loadProjects(); // Reload projects after posting
         },
       ),
     );
   }
 
-  List<Project> get _filteredProjects {
+  List<Map<String, dynamic>> get _filteredProjects {
     if (_searchQuery.isEmpty) return _projects;
 
     return _projects.where((project) {
       final query = _searchQuery.toLowerCase();
-      return project.title.toLowerCase().contains(query) ||
-          project.description.toLowerCase().contains(query) ||
-          project.technologies.any(
+      return project['title'].toLowerCase().contains(query) ||
+          project['description'].toLowerCase().contains(query) ||
+          (project['technologies'] as List<String>).any(
             (tech) => tech.toLowerCase().contains(query),
-          );
+          ) ||
+          project['eventTitle'].toLowerCase().contains(query);
     }).toList();
   }
 
@@ -141,7 +192,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
                     },
                     decoration: InputDecoration(
                       hintText:
-                          'Search projects by title, description, or technology...',
+                          'Search by title, description, event, or technology...',
                       prefixIcon: const Icon(
                         Icons.search,
                         color: Color(0xFF9CA3AF),
@@ -172,20 +223,25 @@ class _ProjectsPageState extends State<ProjectsPage> {
 
             // Projects Grid
             Expanded(
-              child: _filteredProjects.isEmpty
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _filteredProjects.isEmpty
                   ? _buildEmptyState()
-                  : GridView.builder(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 1,
-                            childAspectRatio: 0.85,
-                            mainAxisSpacing: 16,
-                          ),
-                      itemCount: _filteredProjects.length,
-                      itemBuilder: (context, index) {
-                        return _buildProjectCard(_filteredProjects[index]);
-                      },
+                  : RefreshIndicator(
+                      onRefresh: _loadProjects,
+                      child: GridView.builder(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 1,
+                              childAspectRatio: 0.75,
+                              mainAxisSpacing: 16,
+                            ),
+                        itemCount: _filteredProjects.length,
+                        itemBuilder: (context, index) {
+                          return _buildProjectCard(_filteredProjects[index]);
+                        },
+                      ),
                     ),
             ),
           ],
@@ -194,7 +250,10 @@ class _ProjectsPageState extends State<ProjectsPage> {
     );
   }
 
-  Widget _buildProjectCard(Project project) {
+  Widget _buildProjectCard(Map<String, dynamic> project) {
+    final timestamp = project['createdAt'] as Timestamp?;
+    final postedDate = timestamp?.toDate() ?? DateTime.now();
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -217,19 +276,17 @@ class _ProjectsPageState extends State<ProjectsPage> {
               topLeft: Radius.circular(12),
               topRight: Radius.circular(12),
             ),
-            child: Image.network(
-              project.imageUrl,
-              height: 192,
-              width: double.infinity,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  height: 192,
-                  color: Colors.grey[200],
-                  child: const Icon(Icons.image_not_supported, size: 48),
-                );
-              },
-            ),
+            child: project['imageUrl'].isNotEmpty
+                ? Image.network(
+                    project['imageUrl'],
+                    height: 192,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return _buildPlaceholderImage();
+                    },
+                  )
+                : _buildPlaceholderImage(),
           ),
 
           // Content
@@ -239,22 +296,15 @@ class _ProjectsPageState extends State<ProjectsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Author Info
+                  // Author Info & Event Badge
                   Row(
                     children: [
-                      CircleAvatar(
-                        radius: 20,
-                        backgroundImage: NetworkImage(project.authorAvatar),
-                        onBackgroundImageError: (_, __) {},
-                        child: const Icon(Icons.person, size: 20),
-                      ),
-                      const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              project.author,
+                              project['studentName'],
                               style: const TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
@@ -262,7 +312,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
                               ),
                             ),
                             Text(
-                              _formatDate(project.postedDate),
+                              _formatDate(postedDate),
                               style: const TextStyle(
                                 fontSize: 12,
                                 color: Color(0xFF6B7280),
@@ -273,11 +323,50 @@ class _ProjectsPageState extends State<ProjectsPage> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
+
+                  // Event Label
+                  if (project['eventTitle'].isNotEmpty &&
+                      project['eventTitle'] != 'No event')
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF3E8FF),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.event,
+                              size: 12,
+                              color: Color(0xFFA855F7),
+                            ),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                project['eventTitle'],
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFFA855F7),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 12),
 
                   // Title
                   Text(
-                    project.title,
+                    project['title'],
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -290,7 +379,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
 
                   // Description
                   Text(
-                    project.description,
+                    project['description'],
                     style: const TextStyle(
                       fontSize: 14,
                       color: Color(0xFF6B7280),
@@ -304,36 +393,39 @@ class _ProjectsPageState extends State<ProjectsPage> {
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: project.technologies.take(3).map((tech) {
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF3F4F6),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.tag,
-                              size: 12,
-                              color: Color(0xFF6B7280),
+                    children: (project['technologies'] as List<String>)
+                        .take(3)
+                        .map((tech) {
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 4,
                             ),
-                            const SizedBox(width: 4),
-                            Text(
-                              tech,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF374151),
-                              ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF3F4F6),
+                              borderRadius: BorderRadius.circular(20),
                             ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.tag,
+                                  size: 12,
+                                  color: Color(0xFF6B7280),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  tech,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFF374151),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        })
+                        .toList(),
                   ),
                   const Spacer(),
 
@@ -349,21 +441,25 @@ class _ProjectsPageState extends State<ProjectsPage> {
                         Row(
                           children: [
                             InkWell(
-                              onTap: () => _toggleLike(project.id),
+                              onTap: () => _toggleLike(
+                                project['id'],
+                                project['liked'],
+                                project['likes'],
+                              ),
                               child: Row(
                                 children: [
                                   Icon(
-                                    project.liked
+                                    project['liked']
                                         ? Icons.favorite
                                         : Icons.favorite_border,
                                     size: 20,
-                                    color: project.liked
+                                    color: project['liked']
                                         ? Colors.red
                                         : const Color(0xFF6B7280),
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
-                                    '${project.likes}',
+                                    '${project['likes']}',
                                     style: const TextStyle(
                                       fontSize: 14,
                                       color: Color(0xFF6B7280),
@@ -382,7 +478,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
-                                  '${project.comments}',
+                                  '${project['comments']}',
                                   style: const TextStyle(
                                     fontSize: 14,
                                     color: Color(0xFF6B7280),
@@ -394,17 +490,20 @@ class _ProjectsPageState extends State<ProjectsPage> {
                         ),
                         Row(
                           children: [
-                            IconButton(
-                              icon: const Icon(Icons.code, size: 20),
-                              color: const Color(0xFF6B7280),
-                              onPressed: () => _launchUrl(project.githubUrl),
-                              tooltip: 'View on GitHub',
-                            ),
-                            if (project.liveUrl != null)
+                            if (project['githubUrl'].isNotEmpty)
+                              IconButton(
+                                icon: const Icon(Icons.code, size: 20),
+                                color: const Color(0xFF6B7280),
+                                onPressed: () =>
+                                    _launchUrl(project['githubUrl']),
+                                tooltip: 'View on GitHub',
+                              ),
+                            if (project['liveUrl'] != null &&
+                                project['liveUrl'].isNotEmpty)
                               IconButton(
                                 icon: const Icon(Icons.open_in_new, size: 20),
                                 color: const Color(0xFF6B7280),
-                                onPressed: () => _launchUrl(project.liveUrl!),
+                                onPressed: () => _launchUrl(project['liveUrl']),
                                 tooltip: 'View Live Demo',
                               ),
                           ],
@@ -421,6 +520,20 @@ class _ProjectsPageState extends State<ProjectsPage> {
     );
   }
 
+  Widget _buildPlaceholderImage() {
+    return Container(
+      height: 192,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF3B82F6), Color(0xFF9333EA)],
+        ),
+      ),
+      child: const Center(
+        child: Icon(Icons.code, size: 64, color: Colors.white),
+      ),
+    );
+  }
+
   Widget _buildEmptyState() {
     return Center(
       child: Column(
@@ -429,9 +542,18 @@ class _ProjectsPageState extends State<ProjectsPage> {
           Icon(Icons.code_off, size: 64, color: Colors.grey[300]),
           const SizedBox(height: 16),
           Text(
-            'No projects found matching your search',
+            _searchQuery.isEmpty
+                ? 'No projects yet'
+                : 'No projects found matching your search',
             style: TextStyle(fontSize: 16, color: Colors.grey[500]),
           ),
+          if (_searchQuery.isEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Be the first to post a project!',
+              style: TextStyle(fontSize: 14, color: Colors.grey[400]),
+            ),
+          ],
         ],
       ),
     );
@@ -456,6 +578,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
   }
 
   Future<void> _launchUrl(String urlString) async {
+    if (urlString.isEmpty) return;
     final uri = Uri.parse(urlString);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -471,7 +594,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
 
 // Post Project Modal
 class PostProjectModal extends StatefulWidget {
-  final Function(Map<String, dynamic>) onSubmit;
+  final VoidCallback onSubmit;
 
   const PostProjectModal({Key? key, required this.onSubmit}) : super(key: key);
 
@@ -488,6 +611,163 @@ class _PostProjectModalState extends State<PostProjectModal> {
   final _imageUrlController = TextEditingController();
   final _techController = TextEditingController();
   final List<String> _technologies = [];
+  final User? _currentUser = FirebaseAuth.instance.currentUser;
+
+  List<Map<String, String>> _registeredEvents = [];
+  String? _selectedEventId;
+  bool _isLoadingEvents = true;
+  bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRegisteredEvents();
+  }
+
+  Future<void> _loadRegisteredEvents() async {
+    if (_currentUser == null) {
+      setState(() => _isLoadingEvents = false);
+      return;
+    }
+
+    try {
+      // Get all events the student is registered for
+      final eventsSnapshot = await FirebaseFirestore.instance
+          .collection('events')
+          .get();
+
+      List<Map<String, String>> events = [];
+
+      for (var eventDoc in eventsSnapshot.docs) {
+        // Check if student is registered for this event
+        final registrationDoc = await FirebaseFirestore.instance
+            .collection('events')
+            .doc(eventDoc.id)
+            .collection('registrations')
+            .doc(_currentUser!.uid)
+            .get();
+
+        if (registrationDoc.exists) {
+          final eventData = eventDoc.data();
+          events.add({
+            'id': eventDoc.id,
+            'title': eventData['title'] ?? 'Untitled Event',
+          });
+        }
+      }
+
+      setState(() {
+        _registeredEvents = events;
+        _isLoadingEvents = false;
+      });
+    } catch (e) {
+      print('Error loading registered events: $e');
+      setState(() => _isLoadingEvents = false);
+    }
+  }
+
+  Future<void> _submitProject() async {
+    print('=== SUBMIT PROJECT CALLED ===');
+
+    if (!_formKey.currentState!.validate() || _technologies.isEmpty) {
+      print('Validation failed or no technologies');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Please fill all fields and add at least one technology',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (_selectedEventId == null) {
+      print('No event selected');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select an event for this project'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    print('Current user: ${_currentUser?.uid}');
+    print('Selected event: $_selectedEventId');
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      print('Fetching user data...');
+      // Get current user data
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUser!.uid)
+          .get();
+
+      final userData = userDoc.data();
+      print('User data: $userData');
+
+      final selectedEvent = _registeredEvents.firstWhere(
+        (event) => event['id'] == _selectedEventId,
+      );
+      print('Selected event title: ${selectedEvent['title']}');
+
+      final projectData = {
+        'title': _titleController.text.trim(),
+        'description': _descriptionController.text.trim(),
+        'studentId': _currentUser!.uid,
+        'studentName': userData?['fullName'] ?? 'Unknown',
+        'studentEmail': userData?['email'] ?? '',
+        'eventId': _selectedEventId,
+        'eventTitle': selectedEvent['title'],
+        'technologies': _technologies,
+        'githubUrl': _githubController.text.trim(),
+        'liveUrl': _liveUrlController.text.trim(),
+        'imageUrl': _imageUrlController.text.trim(),
+        'likes': 0,
+        'comments': 0,
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+
+      print('Project data to save: $projectData');
+      print('Saving to Firestore...');
+
+      // Save project to Firestore
+      final docRef = await FirebaseFirestore.instance
+          .collection('projects')
+          .add(projectData);
+
+      print('Project saved successfully! Doc ID: ${docRef.id}');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Project posted successfully!'),
+            backgroundColor: Color(0xFF10B981),
+          ),
+        );
+        widget.onSubmit();
+        Navigator.pop(context);
+      }
+    } catch (e, stackTrace) {
+      print('ERROR submitting project: $e');
+      print('Stack trace: $stackTrace');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error posting project: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -535,127 +815,208 @@ class _PostProjectModalState extends State<PostProjectModal> {
 
           // Form
           Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextFormField(
-                      controller: _titleController,
-                      decoration: const InputDecoration(
-                        labelText: 'Project Title',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _descriptionController,
-                      decoration: const InputDecoration(
-                        labelText: 'Description',
-                        border: OutlineInputBorder(),
-                      ),
-                      maxLines: 3,
-                      validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _githubController,
-                      decoration: const InputDecoration(
-                        labelText: 'GitHub URL',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _liveUrlController,
-                      decoration: const InputDecoration(
-                        labelText: 'Live URL (Optional)',
-                        border: OutlineInputBorder(),
+            child: _isLoadingEvents
+                ? const Center(child: CircularProgressIndicator())
+                : _registeredEvents.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.event_busy,
+                            size: 64,
+                            color: Colors.grey[300],
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No Registered Events',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'You need to register for an event before posting a project',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[500],
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _imageUrlController,
-                      decoration: const InputDecoration(
-                        labelText: 'Image URL',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: _techController,
+                  )
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Event Selection
+                          const Text(
+                            'Select Event',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF374151),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<String>(
+                            value: _selectedEventId,
+                            decoration: InputDecoration(
+                              hintText: 'Choose an event for this project',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 12,
+                              ),
+                            ),
+                            items: _registeredEvents.map((event) {
+                              return DropdownMenuItem(
+                                value: event['id'],
+                                child: Text(
+                                  event['title']!,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              setState(() {
+                                _selectedEventId = value;
+                              });
+                            },
+                            validator: (value) =>
+                                value == null ? 'Please select an event' : null,
+                          ),
+                          const SizedBox(height: 16),
+
+                          TextFormField(
+                            controller: _titleController,
                             decoration: const InputDecoration(
-                              labelText: 'Add Technology',
+                              labelText: 'Project Title *',
+                              border: OutlineInputBorder(),
+                            ),
+                            validator: (v) =>
+                                v?.isEmpty ?? true ? 'Required' : null,
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _descriptionController,
+                            decoration: const InputDecoration(
+                              labelText: 'Description *',
+                              border: OutlineInputBorder(),
+                            ),
+                            maxLines: 3,
+                            validator: (v) =>
+                                v?.isEmpty ?? true ? 'Required' : null,
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _githubController,
+                            decoration: const InputDecoration(
+                              labelText: 'GitHub URL *',
+                              border: OutlineInputBorder(),
+                            ),
+                            validator: (v) =>
+                                v?.isEmpty ?? true ? 'Required' : null,
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _liveUrlController,
+                            decoration: const InputDecoration(
+                              labelText: 'Live URL (Optional)',
                               border: OutlineInputBorder(),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: () {
-                            if (_techController.text.isNotEmpty) {
-                              setState(() {
-                                _technologies.add(_techController.text);
-                                _techController.clear();
-                              });
-                            }
-                          },
-                          child: const Text('Add'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      children: _technologies.map((tech) {
-                        return Chip(
-                          label: Text(tech),
-                          onDeleted: () {
-                            setState(() {
-                              _technologies.remove(tech);
-                            });
-                          },
-                        );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 24),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          if (_formKey.currentState!.validate() &&
-                              _technologies.isNotEmpty) {
-                            widget.onSubmit({
-                              'title': _titleController.text,
-                              'description': _descriptionController.text,
-                              'githubUrl': _githubController.text,
-                              'liveUrl': _liveUrlController.text.isEmpty
-                                  ? null
-                                  : _liveUrlController.text,
-                              'imageUrl': _imageUrlController.text,
-                              'technologies': _technologies,
-                            });
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF3B82F6),
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                        ),
-                        child: const Text('Post Project'),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _imageUrlController,
+                            decoration: const InputDecoration(
+                              labelText: 'Image URL *',
+                              border: OutlineInputBorder(),
+                            ),
+                            validator: (v) =>
+                                v?.isEmpty ?? true ? 'Required' : null,
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextFormField(
+                                  controller: _techController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Add Technology',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton(
+                                onPressed: () {
+                                  if (_techController.text.isNotEmpty) {
+                                    setState(() {
+                                      _technologies.add(_techController.text);
+                                      _techController.clear();
+                                    });
+                                  }
+                                },
+                                child: const Text('Add'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            children: _technologies.map((tech) {
+                              return Chip(
+                                label: Text(tech),
+                                onDeleted: () {
+                                  setState(() {
+                                    _technologies.remove(tech);
+                                  });
+                                },
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 24),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: _isSubmitting ? null : _submitProject,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF3B82F6),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
+                              ),
+                              child: _isSubmitting
+                                  ? const SizedBox(
+                                      height: 20,
+                                      width: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              Colors.white,
+                                            ),
+                                      ),
+                                    )
+                                  : const Text('Post Project'),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                ),
-              ),
-            ),
+                  ),
           ),
         ],
       ),
@@ -673,125 +1034,3 @@ class _PostProjectModalState extends State<PostProjectModal> {
     super.dispose();
   }
 }
-
-// Project Model
-class Project {
-  final String id;
-  final String title;
-  final String author;
-  final String authorAvatar;
-  final String description;
-  final List<String> technologies;
-  final String githubUrl;
-  final String? liveUrl;
-  final String imageUrl;
-  final int likes;
-  final int comments;
-  final bool liked;
-  final DateTime postedDate;
-
-  Project({
-    required this.id,
-    required this.title,
-    required this.author,
-    required this.authorAvatar,
-    required this.description,
-    required this.technologies,
-    required this.githubUrl,
-    this.liveUrl,
-    required this.imageUrl,
-    required this.likes,
-    required this.comments,
-    required this.liked,
-    required this.postedDate,
-  });
-
-  Project copyWith({
-    String? id,
-    String? title,
-    String? author,
-    String? authorAvatar,
-    String? description,
-    List<String>? technologies,
-    String? githubUrl,
-    String? liveUrl,
-    String? imageUrl,
-    int? likes,
-    int? comments,
-    bool? liked,
-    DateTime? postedDate,
-  }) {
-    return Project(
-      id: id ?? this.id,
-      title: title ?? this.title,
-      author: author ?? this.author,
-      authorAvatar: authorAvatar ?? this.authorAvatar,
-      description: description ?? this.description,
-      technologies: technologies ?? this.technologies,
-      githubUrl: githubUrl ?? this.githubUrl,
-      liveUrl: liveUrl ?? this.liveUrl,
-      imageUrl: imageUrl ?? this.imageUrl,
-      likes: likes ?? this.likes,
-      comments: comments ?? this.comments,
-      liked: liked ?? this.liked,
-      postedDate: postedDate ?? this.postedDate,
-    );
-  }
-}
-
-// Mock Data
-final mockProjects = [
-  Project(
-    id: '1',
-    title: 'Real-time Chat Application',
-    author: 'Sarah Chen',
-    authorAvatar:
-        'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&q=80',
-    description:
-        'A fully functional chat app built with WebSocket for real-time messaging, file sharing, and group conversations.',
-    technologies: ['React', 'Node.js', 'Socket.io', 'MongoDB'],
-    githubUrl: 'https://github.com',
-    liveUrl: 'https://example.com',
-    imageUrl:
-        'https://images.unsplash.com/photo-1611606063065-ee7946f0787a?w=800&q=80',
-    likes: 42,
-    comments: 8,
-    liked: false,
-    postedDate: DateTime(2025, 1, 8),
-  ),
-  Project(
-    id: '2',
-    title: 'AI Code Assistant',
-    author: 'Mike Rodriguez',
-    authorAvatar:
-        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&q=80',
-    description:
-        'VS Code extension that uses machine learning to provide intelligent code completions and suggestions.',
-    technologies: ['Python', 'TensorFlow', 'TypeScript', 'VS Code API'],
-    githubUrl: 'https://github.com',
-    imageUrl:
-        'https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=800&q=80',
-    likes: 67,
-    comments: 15,
-    liked: true,
-    postedDate: DateTime(2025, 1, 5),
-  ),
-  Project(
-    id: '3',
-    title: 'E-commerce Platform',
-    author: 'Emily Johnson',
-    authorAvatar:
-        'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400&q=80',
-    description:
-        'Full-stack e-commerce solution with payment integration, inventory management, and admin dashboard.',
-    technologies: ['Next.js', 'Stripe', 'PostgreSQL', 'Prisma'],
-    githubUrl: 'https://github.com',
-    liveUrl: 'https://example.com',
-    imageUrl:
-        'https://images.unsplash.com/photo-1557821552-17105176677c?w=800&q=80',
-    likes: 89,
-    comments: 22,
-    liked: false,
-    postedDate: DateTime(2025, 1, 3),
-  ),
-];
