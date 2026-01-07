@@ -32,6 +32,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     _loadTodaySummary();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reload notifications every time this screen is opened
+    _loadNotifications();
+    _loadTodaySummary();
+  }
+
   Future<void> _loadNotifications() async {
     if (_currentUser == null) {
       setState(() => _isLoading = false);
@@ -739,19 +747,19 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Color _getIconColor(String type) {
     switch (type) {
       case 'achievement':
-        return const Color(0xFFA855F7);
+        return const Color(0xFFD97706);
       case 'event':
         return const Color(0xFF3B82F6);
       case 'feedback':
-        return const Color(0xFFA855F7);
+        return const Color(0xFF10B981);
       case 'milestone':
-        return const Color(0xFF6366F1);
-      case 'registration':
         return const Color(0xFFA855F7);
-      case 'deadline':
-        return const Color.fromARGB(255, 236, 90, 90);
-      case 'project':
+      case 'registration':
         return const Color(0xFF6366F1);
+      case 'deadline':
+        return const Color(0xFFEF4444);
+      case 'project':
+        return const Color(0xFFD97706);
       default:
         return const Color(0xFF6B7280);
     }

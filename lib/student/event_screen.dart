@@ -1,5 +1,3 @@
-// ignore_for_file: unused_import
-
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -119,11 +117,10 @@ class _EventsScreenState extends State<EventsScreen> {
   void _showRegistrationModal(Map<String, dynamic> event) {
     showDialog(
       context: context,
-      builder: (context) => EventRegistrationDialog(
+      builder: (context) => EventRegistrationModal(
         event: event,
         onRegistered: () {
-          // Reload events after registration
-          _loadEvents();
+          _loadEvents(); // Reload events after registration
         },
       ),
     );

@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:skill_link/student/notification_service.dart';
 
 class EventRegistrationModal extends StatefulWidget {
-  final Event event;
+  final Map<String, dynamic> event;
+  final VoidCallback onRegistered;
 
-  const EventRegistrationModal({Key? key, required this.event})
-    : super(key: key);
+  const EventRegistrationModal({
+    Key? key,
+    required this.event,
+    required this.onRegistered,
+  }) : super(key: key);
 
   @override
   State<EventRegistrationModal> createState() => _EventRegistrationModalState();
@@ -12,6 +19,7 @@ class EventRegistrationModal extends StatefulWidget {
 
 class _EventRegistrationModalState extends State<EventRegistrationModal> {
   final _formKey = GlobalKey<FormState>();
+  final User? _currentUser = FirebaseAuth.instance.currentUser;
   String _step = 'form'; // 'form' or 'success'
 
   final _nameController = TextEditingController();
@@ -19,12 +27,125 @@ class _EventRegistrationModalState extends State<EventRegistrationModal> {
   final _studentIdController = TextEditingController();
   final _interestsController = TextEditingController();
   String _selectedYear = '';
+  bool _isSubmitting = false;
 
-  void _handleSubmit() {
-    if (_formKey.currentState!.validate()) {
-      setState(() {
-        _step = 'success';
-      });
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    if (_currentUser == null) return;
+
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUser!.uid)
+          .get();
+
+      if (userDoc.exists) {
+        final userData = userDoc.data();
+        setState(() {
+          _nameController.text = userData?['fullName'] ?? '';
+          _emailController.text =
+              userData?['email'] ?? _currentUser!.email ?? '';
+          _studentIdController.text = userData?['studentId'] ?? '';
+        });
+      }
+    } catch (e) {
+      print('Error loading user data: $e');
+    }
+  }
+
+  Future<void> _handleSubmit() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    if (_currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You must be logged in to register'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      // Check if already registered
+      final regCheck = await FirebaseFirestore.instance
+          .collection('events')
+          .doc(widget.event['id'])
+          .collection('registrations')
+          .doc(_currentUser!.uid)
+          .get();
+
+      if (regCheck.exists) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('You are already registered for this event'),
+              backgroundColor: Color(0xFF10B981),
+            ),
+          );
+          Navigator.pop(context);
+        }
+        return;
+      }
+
+      // Register student
+      await FirebaseFirestore.instance
+          .collection('events')
+          .doc(widget.event['id'])
+          .collection('registrations')
+          .doc(_currentUser!.uid)
+          .set({
+            'studentId': _currentUser!.uid,
+            'studentName': _nameController.text.trim(),
+            'studentEmail': _emailController.text.trim(),
+            'studentIdNumber': _studentIdController.text.trim(),
+            'academicYear': _selectedYear,
+            'interests': _interestsController.text.trim(),
+            'registeredAt': Timestamp.fromDate(DateTime.now()),
+          });
+
+      // Update registered count
+      await FirebaseFirestore.instance
+          .collection('events')
+          .doc(widget.event['id'])
+          .update({'registeredCount': FieldValue.increment(1)});
+
+      // Update student's event count
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUser!.uid)
+          .update({'stats.eventsAttended': FieldValue.increment(1)});
+
+      //  SEND NOTIFICATION TO PROFESSOR
+      await NotificationService.notifyEventRegistration(
+        professorId: widget.event['createdBy'],
+        studentName: _nameController.text.trim(),
+        eventTitle: widget.event['title'],
+        eventId: widget.event['id'],
+      );
+
+      if (mounted) {
+        setState(() {
+          _step = 'success';
+          _isSubmitting = false;
+        });
+        widget.onRegistered();
+      }
+    } catch (e) {
+      print('Error registering for event: $e');
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -96,7 +217,7 @@ class _EventRegistrationModalState extends State<EventRegistrationModal> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                widget.event.title,
+                widget.event['title'],
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -105,7 +226,7 @@ class _EventRegistrationModalState extends State<EventRegistrationModal> {
               ),
               const SizedBox(height: 8),
               Text(
-                widget.event.description,
+                widget.event['description'],
                 style: const TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
               ),
               const SizedBox(height: 12),
@@ -116,11 +237,11 @@ class _EventRegistrationModalState extends State<EventRegistrationModal> {
                 ),
                 child: Column(
                   children: [
-                    _buildInfoRow('Date', _formatDate(widget.event.date)),
+                    _buildInfoRow('Date', _formatDate(widget.event['date'])),
                     const SizedBox(height: 4),
-                    _buildInfoRow('Time', widget.event.time),
+                    _buildInfoRow('Time', widget.event['time']),
                     const SizedBox(height: 4),
-                    _buildInfoRow('Location', widget.event.location),
+                    _buildInfoRow('Location', widget.event['location']),
                   ],
                 ),
               ),
@@ -362,7 +483,7 @@ class _EventRegistrationModalState extends State<EventRegistrationModal> {
                 width: double.infinity,
                 height: 48,
                 child: ElevatedButton(
-                  onPressed: _handleSubmit,
+                  onPressed: _isSubmitting ? null : _handleSubmit,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF3B82F6),
                     foregroundColor: Colors.white,
@@ -370,10 +491,24 @@ class _EventRegistrationModalState extends State<EventRegistrationModal> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  child: const Text(
-                    'Complete Registration',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
+                  child: _isSubmitting
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
+                          ),
+                        )
+                      : const Text(
+                          'Complete Registration',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                 ),
               ),
             ],
@@ -393,8 +528,8 @@ class _EventRegistrationModalState extends State<EventRegistrationModal> {
             Container(
               width: 64,
               height: 64,
-              decoration: BoxDecoration(
-                color: const Color(0xFFD1FAE5),
+              decoration: const BoxDecoration(
+                color: Color(0xFFD1FAE5),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -425,7 +560,7 @@ class _EventRegistrationModalState extends State<EventRegistrationModal> {
                   children: [
                     const TextSpan(text: "You've successfully registered for "),
                     TextSpan(
-                      text: widget.event.title,
+                      text: widget.event['title'],
                       style: const TextStyle(
                         color: Color(0xFF111827),
                         fontWeight: FontWeight.w600,
@@ -494,22 +629,28 @@ class _EventRegistrationModalState extends State<EventRegistrationModal> {
   }
 
   String _formatDate(String dateString) {
-    final date = DateTime.parse(dateString);
-    final months = [
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
-    ];
-    return '${months[date.month - 1]} ${date.day}, ${date.year}';
+    if (dateString.isEmpty) return 'TBD';
+
+    try {
+      final date = DateTime.parse(dateString);
+      final months = [
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December',
+      ];
+      return '${months[date.month - 1]} ${date.day}, ${date.year}';
+    } catch (e) {
+      return dateString;
+    }
   }
 
   @override
@@ -520,28 +661,4 @@ class _EventRegistrationModalState extends State<EventRegistrationModal> {
     _interestsController.dispose();
     super.dispose();
   }
-}
-
-// Event Model (add this if not already present)
-class Event {
-  final String id;
-  final String title;
-  final String type;
-  final String date;
-  final String time;
-  final String location;
-  final String description;
-
-  Event({
-    required this.id,
-    required this.title,
-    required this.type,
-    required this.date,
-    required this.time,
-    required this.location,
-    required this.description,
-    required this.imageUrl,
-  });
-
-  final String imageUrl;
 }
