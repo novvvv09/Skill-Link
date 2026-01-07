@@ -25,9 +25,9 @@ android {
     signingConfigs {
         create("release") {
             keyAlias = "release_key"
-            keyPassword = "skill_link@2024"
+            keyPassword = "nuebe2024"
             storeFile = file("$projectDir/release.keystore")
-            storePassword = "skill_link@2024"
+            storePassword = "nuebe2024"
         }
     }
 
