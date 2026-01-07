@@ -4,7 +4,7 @@ import 'package:skill_link/auth/log-in_screen.dart';
 import 'package:skill_link/auth/splash_screen.dart';
 import 'package:skill_link/professor/create_event_screen.dart';
 import 'package:skill_link/professor/event_details.dart';
-import 'package:skill_link/professor/my%20event_screen.dart';
+import 'package:skill_link/professor/my_event_screen.dart';
 import 'package:skill_link/professor/professor_nav.dart';
 import 'package:skill_link/professor/professor_profile.dart';
 import 'package:skill_link/student/event_screen.dart';
@@ -15,13 +15,19 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:skill_link/utils/responsive_util.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  try {
+    WidgetsFlutterBinding.ensureInitialized();
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    print('Firebase initialization error: $e');
+  }
 
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-
-  runApp(MyApp());
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
@@ -30,12 +36,19 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SkillLink',
+      title: 'Skill Link',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.blue,
-        fontFamily: 'Inter', // Add custom font
+        primaryColor: const Color(0xFF3B82F6),
+        fontFamily: 'Inter',
         useMaterial3: true,
+        scaffoldBackgroundColor: Colors.white,
+        appBarTheme: const AppBarTheme(
+          elevation: 0,
+          backgroundColor: Color(0xFF3B82F6),
+          foregroundColor: Colors.white,
+        ),
       ),
       home: const AppNavigator(),
     );
@@ -118,32 +131,47 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
 
   final List<Widget> _screens = [
     const StudentDashboard(),
-    const EventsScreen(), // Events screen with registration
-    const ProjectsPage(), // Community projects feed
+    const EventsScreen(),
+    const ProjectsPage(),
     const ProfileScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
+    final isSmall = ResponsiveUtil.isSmallScreen(context);
+
     return Scaffold(
-      body: _screens[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF3B82F6),
-        unselectedItemColor: Colors.grey,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.event), label: 'Events'),
-          BottomNavigationBarItem(icon: Icon(Icons.work), label: 'Projects'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
-        ],
-      ),
+      body: SafeArea(child: _screens[_currentIndex]),
+      bottomNavigationBar: isSmall
+          ? BottomNavigationBar(
+              currentIndex: _currentIndex,
+              onTap: (index) {
+                setState(() {
+                  _currentIndex = index;
+                });
+              },
+              type: BottomNavigationBarType.fixed,
+              selectedItemColor: const Color(0xFF3B82F6),
+              unselectedItemColor: Colors.grey,
+              backgroundColor: Colors.white,
+              elevation: 8,
+              items: const [
+                BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.event),
+                  label: 'Events',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.work),
+                  label: 'Projects',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.person),
+                  label: 'Profile',
+                ),
+              ],
+            )
+          : null,
     );
   }
 }
