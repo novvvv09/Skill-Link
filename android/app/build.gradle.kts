@@ -9,7 +9,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.skill_link"
+    namespace = "com.nuebe.skilllink"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -22,19 +22,30 @@ android {
         jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
+    signingConfigs {
+        create("release") {
+            keyAlias = "release_key"
+            keyPassword = "skill_link@2024"
+            storeFile = file("$projectDir/release.keystore")
+            storePassword = "skill_link@2024"
+        }
+    }
+
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/...)
-        applicationId = "com.example.skill_link"
-        // You can update the following values to match your application needs.
+        applicationId = "com.nuebe.skilllink"
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        targetSdk = 34
+        versionCode = 1
+        versionName = "1.0.0"
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
+            isMinifyEnabled = false
+            isShrinkResources = false
+            signingConfig = signingConfigs.getByName("release")
+        }
+        debug {
             signingConfig = signingConfigs.getByName("debug")
         }
     }

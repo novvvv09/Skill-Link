@@ -644,7 +644,7 @@ class _PostProjectModalState extends State<PostProjectModal> {
             .collection('events')
             .doc(eventDoc.id)
             .collection('registrations')
-            .doc(_currentUser!.uid)
+            .doc(_currentUser.uid)
             .get();
 
         if (registrationDoc.exists) {
@@ -693,7 +693,9 @@ class _PostProjectModalState extends State<PostProjectModal> {
       return;
     }
 
-    print('Current user: ${_currentUser?.uid}');
+    if (_currentUser == null) return;
+
+    print('Current user: ${_currentUser.uid}');
     print('Selected event: $_selectedEventId');
 
     setState(() => _isSubmitting = true);
@@ -703,7 +705,7 @@ class _PostProjectModalState extends State<PostProjectModal> {
       // Get current user data
       final userDoc = await FirebaseFirestore.instance
           .collection('users')
-          .doc(_currentUser!.uid)
+          .doc(_currentUser.uid)
           .get();
 
       final userData = userDoc.data();
@@ -717,7 +719,7 @@ class _PostProjectModalState extends State<PostProjectModal> {
       final projectData = {
         'title': _titleController.text.trim(),
         'description': _descriptionController.text.trim(),
-        'studentId': _currentUser!.uid,
+        'studentId': _currentUser.uid,
         'studentName': userData?['fullName'] ?? 'Unknown',
         'studentEmail': userData?['email'] ?? '',
         'eventId': _selectedEventId,

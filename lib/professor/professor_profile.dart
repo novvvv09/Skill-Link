@@ -36,7 +36,7 @@ class _ProfessorProfileScreenState extends State<ProfessorProfileScreen> {
     try {
       DocumentSnapshot userDoc = await FirebaseFirestore.instance
           .collection('users')
-          .doc(_currentUser!.uid)
+          .doc(_currentUser.uid)
           .get();
 
       if (userDoc.exists) {
@@ -60,16 +60,11 @@ class _ProfessorProfileScreenState extends State<ProfessorProfileScreen> {
       // Count total events created by this professor
       QuerySnapshot eventsSnapshot = await FirebaseFirestore.instance
           .collection('events')
-          .where('createdBy', isEqualTo: _currentUser!.uid)
+          .where('createdBy', isEqualTo: _currentUser.uid)
           .get();
 
       // Count active events (events with date in the future)
-      int activeCount = 0;
-      for (var doc in eventsSnapshot.docs) {
-        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-        // You can add date checking logic here if needed
-        activeCount++;
-      }
+      int activeCount = eventsSnapshot.docs.length;
 
       // Count total unique students registered for professor's events
       Set<String> uniqueStudents = {};
@@ -150,7 +145,7 @@ class _ProfessorProfileScreenState extends State<ProfessorProfileScreen> {
 
     // Get user data with fallbacks
     String fullName = _userData?['fullName'] ?? 'Professor';
-    String email = _userData?['email'] ?? _currentUser?.email ?? 'No email';
+    String email = _userData?['email'] ?? _currentUser.email ?? 'No email';
     String role = _userData?['role'] ?? 'professor';
     String title = role == 'professor' ? 'Professor' : 'Staff';
 

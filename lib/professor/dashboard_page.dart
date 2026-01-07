@@ -41,7 +41,7 @@ class _ProfessorDashboardState extends State<ProfessorDashboard> {
       // Load user data
       DocumentSnapshot userDoc = await FirebaseFirestore.instance
           .collection('users')
-          .doc(_currentUser!.uid)
+          .doc(_currentUser.uid)
           .get();
 
       if (userDoc.exists) {
@@ -55,7 +55,7 @@ class _ProfessorDashboardState extends State<ProfessorDashboard> {
       // Load events created by this professor
       QuerySnapshot eventsSnapshot = await FirebaseFirestore.instance
           .collection('events')
-          .where('createdBy', isEqualTo: _currentUser!.uid)
+          .where('createdBy', isEqualTo: _currentUser.uid)
           .orderBy('date', descending: false)
           .get();
 

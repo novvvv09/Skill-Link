@@ -30,7 +30,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // Fetch user data from Firestore
       DocumentSnapshot userDoc = await FirebaseFirestore.instance
           .collection('users')
-          .doc(_currentUser!.uid)
+          .doc(_currentUser.uid)
           .get();
 
       if (userDoc.exists) {

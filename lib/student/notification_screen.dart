@@ -49,7 +49,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     try {
       final notificationsSnapshot = await FirebaseFirestore.instance
           .collection('notifications')
-          .where('userId', isEqualTo: _currentUser!.uid)
+          .where('userId', isEqualTo: _currentUser.uid)
           .orderBy('createdAt', descending: true)
           .limit(20)
           .get();
@@ -98,7 +98,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               .collection('events')
               .doc(eventDoc.id)
               .collection('registrations')
-              .doc(_currentUser!.uid)
+              .doc(_currentUser.uid)
               .get();
 
           if (registrationDoc.exists) {
@@ -114,7 +114,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         // Count new registrations today for professor
         final eventsSnapshot = await FirebaseFirestore.instance
             .collection('events')
-            .where('createdBy', isEqualTo: _currentUser!.uid)
+            .where('createdBy', isEqualTo: _currentUser.uid)
             .get();
 
         int newRegistrations = 0;

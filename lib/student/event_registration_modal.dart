@@ -41,7 +41,7 @@ class _EventRegistrationModalState extends State<EventRegistrationModal> {
     try {
       final userDoc = await FirebaseFirestore.instance
           .collection('users')
-          .doc(_currentUser!.uid)
+          .doc(_currentUser.uid)
           .get();
 
       if (userDoc.exists) {
@@ -49,7 +49,7 @@ class _EventRegistrationModalState extends State<EventRegistrationModal> {
         setState(() {
           _nameController.text = userData?['fullName'] ?? '';
           _emailController.text =
-              userData?['email'] ?? _currentUser!.email ?? '';
+              userData?['email'] ?? _currentUser.email ?? '';
           _studentIdController.text = userData?['studentId'] ?? '';
         });
       }
@@ -79,7 +79,7 @@ class _EventRegistrationModalState extends State<EventRegistrationModal> {
           .collection('events')
           .doc(widget.event['id'])
           .collection('registrations')
-          .doc(_currentUser!.uid)
+          .doc(_currentUser.uid)
           .get();
 
       if (regCheck.exists) {
@@ -100,9 +100,9 @@ class _EventRegistrationModalState extends State<EventRegistrationModal> {
           .collection('events')
           .doc(widget.event['id'])
           .collection('registrations')
-          .doc(_currentUser!.uid)
+          .doc(_currentUser.uid)
           .set({
-            'studentId': _currentUser!.uid,
+            'studentId': _currentUser.uid,
             'studentName': _nameController.text.trim(),
             'studentEmail': _emailController.text.trim(),
             'studentIdNumber': _studentIdController.text.trim(),
@@ -120,7 +120,7 @@ class _EventRegistrationModalState extends State<EventRegistrationModal> {
       // Update student's event count
       await FirebaseFirestore.instance
           .collection('users')
-          .doc(_currentUser!.uid)
+          .doc(_currentUser.uid)
           .update({'stats.eventsAttended': FieldValue.increment(1)});
 
       //  SEND NOTIFICATION TO PROFESSOR

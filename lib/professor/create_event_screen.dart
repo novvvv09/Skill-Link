@@ -44,7 +44,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         // Get professor's name
         DocumentSnapshot userDoc = await FirebaseFirestore.instance
             .collection('users')
-            .doc(_currentUser!.uid)
+            .doc(_currentUser.uid)
             .get();
 
         Map<String, dynamic>? userData =
@@ -63,7 +63,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               'location': _locationController.text.trim(),
               'capacity': int.parse(_capacityController.text),
               'registeredCount': 0,
-              'createdBy': _currentUser!.uid,
+              'createdBy': _currentUser.uid,
               'professorName': professorName,
               'imageUrl': '', // Placeholder for now
               'createdAt': FieldValue.serverTimestamp(),

@@ -38,7 +38,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       DocumentSnapshot userDoc = await FirebaseFirestore.instance
           .collection('users')
-          .doc(_currentUser!.uid)
+          .doc(_currentUser.uid)
           .get();
 
       if (userDoc.exists) {
