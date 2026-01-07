@@ -49,7 +49,7 @@ class _LoginScreenState extends State<LoginScreen>
         }
       } on FirebaseAuthException catch (e) {
         // Handle Firebase errors
-        String errorMessage = 'An error occurred';
+        String errorMessage = 'incorrect email or password, try again!';
 
         if (e.code == 'user-not-found') {
           errorMessage = 'No user found with this email';
@@ -72,7 +72,7 @@ class _LoginScreenState extends State<LoginScreen>
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('An unexpected error occurred'),
+              content: Text('An error occurred, Please try again later.'),
               backgroundColor: Colors.red,
             ),
           );
@@ -175,7 +175,6 @@ class _LoginScreenState extends State<LoginScreen>
         ),
         TextButton(
           onPressed: () {
-            // ✅ ADDED BLOCK (EXACT CODE YOU PROVIDED)
             Navigator.push(
               context,
               MaterialPageRoute(

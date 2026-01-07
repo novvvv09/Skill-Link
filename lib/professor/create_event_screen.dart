@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:skill_link/student/notification_service.dart';
 
 class CreateEventScreen extends StatefulWidget {
   final Function(int) onNavigate;
@@ -51,21 +52,29 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         String professorName = userData?['fullName'] ?? 'Unknown Professor';
 
         // Create event document
-        await FirebaseFirestore.instance.collection('events').add({
-          'title': _titleController.text.trim(),
-          'description': _descriptionController.text.trim(),
-          'category': _selectedCategory,
-          'date': _dateController.text,
-          'time': _timeController.text,
-          'location': _locationController.text.trim(),
-          'capacity': int.parse(_capacityController.text),
-          'registeredCount': 0,
-          'createdBy': _currentUser!.uid,
-          'professorName': professorName,
-          'imageUrl': '', // Placeholder for now
-          'createdAt': FieldValue.serverTimestamp(),
-          'status': 'active', // active, cancelled, completed
-        });
+        DocumentReference eventRef = await FirebaseFirestore.instance
+            .collection('events')
+            .add({
+              'title': _titleController.text.trim(),
+              'description': _descriptionController.text.trim(),
+              'category': _selectedCategory,
+              'date': _dateController.text,
+              'time': _timeController.text,
+              'location': _locationController.text.trim(),
+              'capacity': int.parse(_capacityController.text),
+              'registeredCount': 0,
+              'createdBy': _currentUser!.uid,
+              'professorName': professorName,
+              'imageUrl': '', // Placeholder for now
+              'createdAt': FieldValue.serverTimestamp(),
+              'status': 'active', // active, cancelled, completed
+            });
+
+        await NotificationService.notifyNewEvent(
+          eventTitle: _titleController.text.trim(),
+          professorName: professorName,
+          eventId: eventRef.id,
+        );
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

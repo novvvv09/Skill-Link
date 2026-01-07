@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-class NotificationsScreen extends StatelessWidget {
+class NotificationsScreen extends StatefulWidget {
   final String role; // 'student' or 'professor'
   final VoidCallback onBack;
   final Function(String) onNavigate;
@@ -13,12 +15,220 @@ class NotificationsScreen extends StatelessWidget {
   }) : super(key: key);
 
   @override
-  Widget build(BuildContext context) {
-    final isStudent = role == 'student';
+  State<NotificationsScreen> createState() => _NotificationsScreenState();
+}
 
-    final notifications = isStudent
-        ? _studentNotifications
-        : _professorNotifications;
+class _NotificationsScreenState extends State<NotificationsScreen> {
+  final User? _currentUser = FirebaseAuth.instance.currentUser;
+  List<NotificationItem> _notifications = [];
+  bool _isLoading = true;
+  int _todayEvents = 0;
+  int _todayBadges = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotifications();
+    _loadTodaySummary();
+  }
+
+  Future<void> _loadNotifications() async {
+    if (_currentUser == null) {
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    try {
+      final notificationsSnapshot = await FirebaseFirestore.instance
+          .collection('notifications')
+          .where('userId', isEqualTo: _currentUser!.uid)
+          .orderBy('createdAt', descending: true)
+          .limit(20)
+          .get();
+
+      final notifications = notificationsSnapshot.docs.map((doc) {
+        final data = doc.data();
+        final timestamp = data['createdAt'] as Timestamp?;
+        return NotificationItem(
+          id: doc.id,
+          type: data['type'] ?? 'general',
+          title: data['title'] ?? 'Notification',
+          description: data['description'] ?? '',
+          time: _formatTime(timestamp),
+          unread: data['unread'] ?? true,
+        );
+      }).toList();
+
+      setState(() {
+        _notifications = notifications;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading notifications: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _loadTodaySummary() async {
+    if (_currentUser == null) return;
+
+    try {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final todayTimestamp = Timestamp.fromDate(today);
+
+      if (widget.role == 'student') {
+        // Count upcoming events student is registered for
+        final eventsSnapshot = await FirebaseFirestore.instance
+            .collection('events')
+            .where('status', isEqualTo: 'active')
+            .get();
+
+        int upcomingEvents = 0;
+        for (var eventDoc in eventsSnapshot.docs) {
+          final registrationDoc = await FirebaseFirestore.instance
+              .collection('events')
+              .doc(eventDoc.id)
+              .collection('registrations')
+              .doc(_currentUser!.uid)
+              .get();
+
+          if (registrationDoc.exists) {
+            upcomingEvents++;
+          }
+        }
+
+        setState(() {
+          _todayEvents = upcomingEvents;
+          _todayBadges = 5; // Can be calculated from achievements
+        });
+      } else {
+        // Count new registrations today for professor
+        final eventsSnapshot = await FirebaseFirestore.instance
+            .collection('events')
+            .where('createdBy', isEqualTo: _currentUser!.uid)
+            .get();
+
+        int newRegistrations = 0;
+        int activeEvents = 0;
+
+        for (var eventDoc in eventsSnapshot.docs) {
+          final eventData = eventDoc.data();
+          if (eventData['status'] == 'active') {
+            activeEvents++;
+          }
+
+          final registrationsSnapshot = await FirebaseFirestore.instance
+              .collection('events')
+              .doc(eventDoc.id)
+              .collection('registrations')
+              .where('registeredAt', isGreaterThanOrEqualTo: todayTimestamp)
+              .get();
+
+          newRegistrations += registrationsSnapshot.docs.length;
+        }
+
+        setState(() {
+          _todayEvents = newRegistrations;
+          _todayBadges = activeEvents;
+        });
+      }
+    } catch (e) {
+      print('Error loading summary: $e');
+    }
+  }
+
+  String _formatTime(Timestamp? timestamp) {
+    if (timestamp == null) return 'Recently';
+
+    final now = DateTime.now();
+    final date = timestamp.toDate();
+    final difference = now.difference(date);
+
+    if (difference.inMinutes < 1) {
+      return 'Just now';
+    } else if (difference.inMinutes < 60) {
+      return '${difference.inMinutes} mins ago';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours} hours ago';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays} days ago';
+    } else {
+      return '${date.month}/${date.day}/${date.year}';
+    }
+  }
+
+  Future<void> _markAllAsRead() async {
+    if (_currentUser == null) return;
+
+    try {
+      final batch = FirebaseFirestore.instance.batch();
+
+      for (var notif in _notifications.where((n) => n.unread)) {
+        final docRef = FirebaseFirestore.instance
+            .collection('notifications')
+            .doc(notif.id);
+        batch.update(docRef, {'unread': false});
+      }
+
+      await batch.commit();
+
+      setState(() {
+        _notifications = _notifications.map((n) {
+          return NotificationItem(
+            id: n.id,
+            type: n.type,
+            title: n.title,
+            description: n.description,
+            time: n.time,
+            unread: false,
+          );
+        }).toList();
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('All notifications marked as read'),
+            backgroundColor: Color(0xFF10B981),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error marking as read: $e');
+    }
+  }
+
+  Future<void> _markAsRead(String notificationId) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('notifications')
+          .doc(notificationId)
+          .update({'unread': false});
+
+      setState(() {
+        _notifications = _notifications.map((n) {
+          if (n.id == notificationId) {
+            return NotificationItem(
+              id: n.id,
+              type: n.type,
+              title: n.title,
+              description: n.description,
+              time: n.time,
+              unread: false,
+            );
+          }
+          return n;
+        }).toList();
+      });
+    } catch (e) {
+      print('Error marking notification as read: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isStudent = widget.role == 'student';
     final gradientColors = isStudent
         ? [const Color(0xFF3B82F6), const Color(0xFF9333EA)]
         : [const Color(0xFFA855F7), const Color(0xFF6366F1)];
@@ -57,7 +267,7 @@ class NotificationsScreen extends StatelessWidget {
                               Icons.arrow_back,
                               color: Colors.white,
                             ),
-                            onPressed: onBack,
+                            onPressed: widget.onBack,
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -106,84 +316,121 @@ class NotificationsScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Summary Card
-                      _buildSummaryCard(isStudent, accentColor),
-                      const SizedBox(height: 32),
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : RefreshIndicator(
+                        onRefresh: () async {
+                          await _loadNotifications();
+                          await _loadTodaySummary();
+                        },
+                        child: SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Summary Card
+                              _buildSummaryCard(isStudent, accentColor),
+                              const SizedBox(height: 32),
 
-                      // Notifications List
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Recent Activity',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF111827),
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: () {},
-                            child: Text(
-                              'Mark all as read',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: accentColor,
+                              // Notifications List
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text(
+                                    'Recent Activity',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF111827),
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed: _markAllAsRead,
+                                    child: Text(
+                                      'Mark all as read',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: accentColor,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
+                              const SizedBox(height: 16),
 
-                      ...notifications.asMap().entries.map((entry) {
-                        // ignore: unused_local_variable
-                        final index = entry.key;
-                        final notif = entry.value;
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 16),
-                          child: _buildNotificationCard(notif, isStudent),
-                        );
-                      }),
+                              if (_notifications.isEmpty)
+                                Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(48),
+                                    child: Column(
+                                      children: [
+                                        Icon(
+                                          Icons.notifications_off,
+                                          size: 64,
+                                          color: Colors.grey[300],
+                                        ),
+                                        const SizedBox(height: 16),
+                                        Text(
+                                          'No notifications yet',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            color: Colors.grey[500],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                              else
+                                ..._notifications.map((notif) {
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 16),
+                                    child: _buildNotificationCard(
+                                      notif,
+                                      isStudent,
+                                    ),
+                                  );
+                                }),
 
-                      // Archive Button
-                      const SizedBox(height: 16),
-                      OutlinedButton(
-                        onPressed: () {},
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(
-                            color: Color(0xFFE5E7EB),
-                            width: 2,
-                            style: BorderStyle.solid,
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                              // Archive Button
+                              if (_notifications.isNotEmpty) ...[
+                                const SizedBox(height: 16),
+                                OutlinedButton(
+                                  onPressed: () {},
+                                  style: OutlinedButton.styleFrom(
+                                    side: const BorderSide(
+                                      color: Color(0xFFE5E7EB),
+                                      width: 2,
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 16,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                  ),
+                                  child: const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        'View Notification Archive',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                          color: Color(0xFF9CA3AF),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                         ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              'View Notification Archive',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                color: Color(0xFF9CA3AF),
-                              ),
-                            ),
-                          ],
-                        ),
                       ),
-                    ],
-                  ),
-                ),
               ),
             ),
           ),
@@ -243,7 +490,7 @@ class NotificationsScreen extends StatelessWidget {
                       Row(
                         children: [
                           Text(
-                            isStudent ? '2' : '+20',
+                            isStudent ? '$_todayEvents' : '+$_todayEvents',
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -302,7 +549,7 @@ class NotificationsScreen extends StatelessWidget {
                       Row(
                         children: [
                           Text(
-                            isStudent ? '5' : '3',
+                            '$_todayBadges',
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -343,7 +590,12 @@ class NotificationsScreen extends StatelessWidget {
 
   Widget _buildNotificationCard(NotificationItem notif, bool isStudent) {
     return InkWell(
-      onTap: () => _handleNotificationClick(notif),
+      onTap: () {
+        if (notif.unread) {
+          _markAsRead(notif.id);
+        }
+        _handleNotificationClick(notif);
+      },
       borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.all(16),
@@ -456,6 +708,8 @@ class NotificationsScreen extends StatelessWidget {
         return Icons.people;
       case 'deadline':
         return Icons.error_outline;
+      case 'project':
+        return Icons.code;
       default:
         return Icons.notifications;
     }
@@ -475,6 +729,8 @@ class NotificationsScreen extends StatelessWidget {
         return const Color(0xFFE0E7FF);
       case 'deadline':
         return const Color(0xFFFEE2E2);
+      case 'project':
+        return const Color(0xFFFEF3C7);
       default:
         return const Color(0xFFF3F4F6);
     }
@@ -483,59 +739,61 @@ class NotificationsScreen extends StatelessWidget {
   Color _getIconColor(String type) {
     switch (type) {
       case 'achievement':
-        return const Color(0xFFD97706);
+        return const Color(0xFFA855F7);
       case 'event':
         return const Color(0xFF3B82F6);
       case 'feedback':
-        return const Color(0xFF10B981);
-      case 'milestone':
         return const Color(0xFFA855F7);
-      case 'registration':
+      case 'milestone':
         return const Color(0xFF6366F1);
+      case 'registration':
+        return const Color(0xFFA855F7);
       case 'deadline':
-        return const Color(0xFFEF4444);
+        return const Color.fromARGB(255, 236, 90, 90);
+      case 'project':
+        return const Color(0xFF6366F1);
       default:
         return const Color(0xFF6B7280);
     }
   }
 
   void _handleNotificationClick(NotificationItem notif) {
-    final isStudent = role == 'student';
+    final isStudent = widget.role == 'student';
 
     if (isStudent) {
       switch (notif.type) {
         case 'event':
-          onNavigate('events');
+          widget.onNavigate('events');
           break;
         case 'achievement':
-          onNavigate('certificates');
+          widget.onNavigate('certificates');
           break;
         case 'feedback':
         case 'project':
-          onNavigate('projects');
+          widget.onNavigate('projects');
           break;
         default:
-          onBack();
+          widget.onBack();
       }
     } else {
       switch (notif.type) {
         case 'registration':
         case 'deadline':
-          onNavigate('events');
+          widget.onNavigate('events');
           break;
         case 'milestone':
         case 'feedback':
-          onNavigate('dashboard');
+          widget.onNavigate('dashboard');
           break;
         default:
-          onBack();
+          widget.onBack();
       }
     }
   }
 }
 
 class NotificationItem {
-  final int id;
+  final String id;
   final String type;
   final String title;
   final String description;
@@ -551,78 +809,3 @@ class NotificationItem {
     required this.unread,
   });
 }
-
-final _studentNotifications = [
-  NotificationItem(
-    id: 1,
-    type: 'achievement',
-    title: 'New Achievement Earned!',
-    description:
-        'Great job! You earned the "React Master" badge for completing the bootcamp.',
-    time: '2 hours ago',
-    unread: true,
-  ),
-  NotificationItem(
-    id: 2,
-    type: 'event',
-    title: 'Upcoming Workshop',
-    description: 'Reminder: The "AI Workshop" starts in 1 hour in Room 301.',
-    time: '1 hour ago',
-    unread: true,
-  ),
-  NotificationItem(
-    id: 3,
-    type: 'feedback',
-    title: 'Project Feedback Received',
-    description:
-        'Professor Smith left comments on your "Alpha E-commerce" project.',
-    time: '5 hours ago',
-    unread: false,
-  ),
-  NotificationItem(
-    id: 4,
-    type: 'event',
-    title: 'Event Update',
-    description: 'The "Flutter Workshop" location has been changed to Lab C.',
-    time: '1 day ago',
-    unread: false,
-  ),
-];
-
-final _professorNotifications = [
-  NotificationItem(
-    id: 1,
-    type: 'registration',
-    title: 'New Event Registrations',
-    description: '20 new students registered for the "CS Hackathon 2026".',
-    time: '30 mins ago',
-    unread: true,
-  ),
-  NotificationItem(
-    id: 2,
-    type: 'milestone',
-    title: 'Major Milestone Reached!',
-    description:
-        'Your events have reached 500+ total student attendees this semester.',
-    time: '4 hours ago',
-    unread: true,
-  ),
-  NotificationItem(
-    id: 3,
-    type: 'deadline',
-    title: 'Grading Deadline Reminder',
-    description:
-        'Reminder: Please approve final project submissions by 5 PM today.',
-    time: '6 hours ago',
-    unread: true,
-  ),
-  NotificationItem(
-    id: 4,
-    type: 'feedback',
-    title: 'Student Question',
-    description:
-        'A student asked a question regarding the "Web Dev Bootcamp" requirements.',
-    time: '1 day ago',
-    unread: false,
-  ),
-];
