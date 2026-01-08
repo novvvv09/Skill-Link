@@ -5,7 +5,6 @@ class ResponsiveUtil {
   /// Get responsive width based on screen width
   static double getResponsiveWidth(BuildContext context, double width) {
     double screenWidth = MediaQuery.of(context).size.width;
-    double screenHeight = MediaQuery.of(context).size.height;
 
     // Phone: < 600dp
     // Tablet: 600-1024dp
