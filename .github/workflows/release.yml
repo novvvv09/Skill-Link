@@ -1,0 +1,77 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Get version from tag
+        id: tag_name
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        
+      - name: Check if APK exists
+        id: check_apk
+        run: |
+          APK_FILE="releases/SkillLink-${{ steps.tag_name.outputs.VERSION }}-aligned.apk"
+          if [ -f "$APK_FILE" ]; then
+            echo "APK_EXISTS=true" >> $GITHUB_OUTPUT
+            echo "APK_FILE=$APK_FILE" >> $GITHUB_OUTPUT
+            SIZE=$(du -h "$APK_FILE" | cut -f1)
+            echo "APK_SIZE=$SIZE" >> $GITHUB_OUTPUT
+          else
+            echo "APK_EXISTS=false" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          tag_name: ${{ steps.tag_name.outputs.VERSION }}
+          name: Release ${{ steps.tag_name.outputs.VERSION }}
+          body: |
+            # Skill Link Release ${{ steps.tag_name.outputs.VERSION }}
+            
+            ## ✅ Production Ready
+            
+            **APK File**: SkillLink-${{ steps.tag_name.outputs.VERSION }}-aligned.apk  
+            ${{ steps.check_apk.outputs.APK_EXISTS == 'true' && format('**Size**: {0}', steps.check_apk.outputs.APK_SIZE) || 'Check releases folder for APK' }}
+            
+            ## 📱 Features
+            - Student Dashboard with project tracking
+            - Professor Dashboard for student management
+            - Event Management System
+            - Real-time Notifications
+            - Firebase Integration
+            
+            ## 🔐 Security
+            - SHA-256 digitally signed
+            - Android 5.0+ compatible
+            - All permissions properly configured
+            
+            ## 📥 Installation
+            1. Download the APK from below
+            2. Enable "Unknown Sources" in Settings
+            3. Open APK and tap Install
+            4. Launch and enjoy!
+            
+            ## 🔗 Links
+            - **GitHub**: https://github.com/novvvv09/Skill-Link
+            - **Download**: [See releases page](https://github.com/novvvv09/Skill-Link/releases)
+            - **Documentation**: [DEPLOYMENT_GUIDE.md](https://github.com/novvvv09/Skill-Link/blob/main/DEPLOYMENT_GUIDE.md)
+          files: |
+            releases/SkillLink-${{ steps.tag_name.outputs.VERSION }}-aligned.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
