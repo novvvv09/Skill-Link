@@ -1,20 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
-import 'package:skill_link/UI/role_selection.dart';
-import 'package:skill_link/auth/log-in_screen.dart';
-import 'package:skill_link/auth/splash_screen.dart';
-import 'package:skill_link/professor/create_event_screen.dart';
-import 'package:skill_link/professor/my_event_screen.dart';
-import 'package:skill_link/professor/professor_profile.dart';
-import 'package:skill_link/student/event_screen.dart';
-import 'package:skill_link/student/notification_screen.dart';
-import 'package:skill_link/student/project_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:skill_link/utils/responsive_util.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,18 +12,14 @@ void main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    debugPrint('✅ Firebase Initialized');
+    debugPrint('✅ Firebase initialized');
   } catch (e) {
-    debugPrint('❌ Firebase Error: $e');
+    debugPrint('❌ Firebase error: $e');
   }
 
   runZonedGuarded(
-    () {
-      runApp(const MyApp());
-    },
-    (error, stackTrace) {
-      debugPrint('🔥 App Error: $error\n$stackTrace');
-    },
+    () => runApp(const MyApp()),
+    (error, stack) => debugPrint('App crash: $error\n$stack'),
   );
 }
 
@@ -50,28 +34,21 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
         primaryColor: const Color(0xFF3B82F6),
-        fontFamily: 'Inter',
         useMaterial3: true,
-        scaffoldBackgroundColor: Colors.white,
-        appBarTheme: const AppBarTheme(
-          elevation: 0,
-          backgroundColor: Color(0xFF3B82F6),
-          foregroundColor: Colors.white,
-        ),
       ),
-      home: const AppEntry(),
+      home: const MainApp(),
     );
   }
 }
 
-class AppEntry extends StatefulWidget {
-  const AppEntry({Key? key}) : super(key: key);
+class MainApp extends StatefulWidget {
+  const MainApp({Key? key}) : super(key: key);
 
   @override
-  State<AppEntry> createState() => _AppEntryState();
+  State<MainApp> createState() => _MainAppState();
 }
 
-class _AppEntryState extends State<AppEntry> {
+class _MainAppState extends State<MainApp> {
   bool _showSplash = true;
 
   @override
@@ -87,181 +64,70 @@ class _AppEntryState extends State<AppEntry> {
   @override
   Widget build(BuildContext context) {
     if (_showSplash) {
-      return SplashScreen(onComplete: () {});
-    }
-    return RoleSelectionScreen(
-      onSelectRole: (role) {
-        try {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => LoginScreen(
-                role: role,
-                onLogin: () {
-                  _handleLogin(context, role);
-                },
-              ),
-            ),
-          );
-        } catch (e) {
-          debugPrint('Error: $e');
-        }
-      },
-    );
-  }
-
-  void _handleLogin(BuildContext context, String role) {
-    try {
-      if (role == 'student') {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const StudentHomeScreen()),
-        );
-      } else if (role == 'professor') {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ProfessorHomeScreen()),
-        );
-      }
-    } catch (e) {
-      debugPrint('Navigation Error: $e');
-    }
-  }
-}
-
-class StudentHomeScreen extends StatefulWidget {
-  const StudentHomeScreen({Key? key}) : super(key: key);
-
-  @override
-  State<StudentHomeScreen> createState() => _StudentHomeScreenState();
-}
-
-class _StudentHomeScreenState extends State<StudentHomeScreen> {
-  int _currentIndex = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    final isSmall = ResponsiveUtil.isSmallScreen(context);
-
-    final screens = [
-      const StudentDashboard(),
-      const EventsScreen(),
-      const ProjectsPage(),
-      const StudentProfileScreen(),
-    ];
-
-    return Scaffold(
-      body: SafeArea(child: screens[_currentIndex]),
-      bottomNavigationBar: isSmall
-          ? BottomNavigationBar(
-              currentIndex: _currentIndex,
-              onTap: (i) => setState(() => _currentIndex = i),
-              type: BottomNavigationBarType.fixed,
-              selectedItemColor: const Color(0xFF3B82F6),
-              unselectedItemColor: Colors.grey,
-              items: const [
-                BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.event),
-                  label: 'Events',
-                ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.work),
-                  label: 'Projects',
-                ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.person),
-                  label: 'Profile',
-                ),
-              ],
-            )
-          : null,
-    );
-  }
-}
-
-class StudentDashboard extends StatefulWidget {
-  const StudentDashboard({Key? key}) : super(key: key);
-
-  @override
-  State<StudentDashboard> createState() => _StudentDashboardState();
-}
-
-class _StudentDashboardState extends State<StudentDashboard> {
-  late User? _user;
-  String _name = 'Student';
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadUser();
-  }
-
-  void _loadUser() async {
-    _user = FirebaseAuth.instance.currentUser;
-    if (_user != null) {
-      try {
-        final doc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(_user!.uid)
-            .get();
-        if (doc.exists && mounted) {
-          setState(() {
-            _name = (doc['fullName'] ?? 'Student').toString().split(' ')[0];
-          });
-        }
-      } catch (e) {
-        debugPrint('Error loading user: $e');
-      }
-    }
-    if (mounted) setState(() => _loading = false);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
-    return Scaffold(
-      backgroundColor: const Color(0xFFF9FAFB),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
+      return const Scaffold(
+        body: Center(
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Dashboard',
-                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+              Icon(Icons.school, size: 80, color: Color(0xFF3B82F6)),
+              SizedBox(height: 20),
+              Text(
+                'SkillLink',
+                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return const RoleSelectionHome();
+  }
+}
+
+class RoleSelectionHome extends StatelessWidget {
+  const RoleSelectionHome({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text(
+                'Select Your Role',
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 40),
+              ElevatedButton.icon(
+                onPressed: () => _navigateToLogin(context, 'student'),
+                icon: const Icon(Icons.school),
+                label: const Text('Student'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 50,
+                    vertical: 20,
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.notifications_outlined),
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => NotificationsScreen(
-                          role: 'student',
-                          onBack: _onNotificationBack,
-                          onNavigate: _onNotificationNavigate,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+                  backgroundColor: const Color(0xFF3B82F6),
+                  foregroundColor: Colors.white,
+                ),
               ),
               const SizedBox(height: 20),
-              Text(
-                'Welcome, $_name! 👋',
-                style: const TextStyle(fontSize: 16, color: Color(0xFF6B7280)),
+              ElevatedButton.icon(
+                onPressed: () => _navigateToLogin(context, 'professor'),
+                icon: const Icon(Icons.person),
+                label: const Text('Professor'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 50,
+                    vertical: 20,
+                  ),
+                  backgroundColor: const Color(0xFF9333EA),
+                  foregroundColor: Colors.white,
+                ),
               ),
-              const SizedBox(height: 30),
-              _buildCard('0', 'Events', Icons.event),
-              const SizedBox(height: 12),
-              _buildCard('0', 'Projects', Icons.work),
-              const SizedBox(height: 12),
-              _buildCard('0', 'Certificates', Icons.card_membership),
             ],
           ),
         ),
@@ -269,10 +135,256 @@ class _StudentDashboardState extends State<StudentDashboard> {
     );
   }
 
-  void _onNotificationBack() => Navigator.pop(context);
-  void _onNotificationNavigate(String screen) => Navigator.pop(context);
+  void _navigateToLogin(BuildContext context, String role) {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => LoginPage(role: role)));
+  }
+}
 
-  Widget _buildCard(String value, String label, IconData icon) {
+class LoginPage extends StatefulWidget {
+  final String role;
+
+  const LoginPage({required this.role, Key? key}) : super(key: key);
+
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('${widget.role.toUpperCase()} Login')),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 20),
+              const Text(
+                'Welcome',
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 30),
+              TextField(
+                controller: _emailController,
+                decoration: InputDecoration(
+                  labelText: 'Email',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _passwordController,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 30),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _handleLogin,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    backgroundColor: const Color(0xFF3B82F6),
+                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
+                          ),
+                        )
+                      : const Text(
+                          'Login',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _handleLogin() {
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter email and password')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    // Navigate to dashboard
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => DashboardPage(role: widget.role)),
+        );
+      }
+    });
+  }
+}
+
+class DashboardPage extends StatefulWidget {
+  final String role;
+
+  const DashboardPage({required this.role, Key? key}) : super(key: key);
+
+  @override
+  State<DashboardPage> createState() => _DashboardPageState();
+}
+
+class _DashboardPageState extends State<DashboardPage> {
+  int _currentIndex = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final screens = [
+      _buildHomeTab(),
+      _buildEventsTab(),
+      _buildProjectsTab(),
+      _buildProfileTab(),
+    ];
+
+    return Scaffold(
+      body: SafeArea(child: screens[_currentIndex]),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: (i) => setState(() => _currentIndex = i),
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: const Color(0xFF3B82F6),
+        unselectedItemColor: Colors.grey,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.event), label: 'Events'),
+          BottomNavigationBarItem(icon: Icon(Icons.work), label: 'Projects'),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHomeTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Dashboard',
+            style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'Welcome, ${widget.role}!',
+            style: const TextStyle(fontSize: 16, color: Color(0xFF6B7280)),
+          ),
+          const SizedBox(height: 30),
+          _buildStatCard('0', 'Events', Icons.event),
+          const SizedBox(height: 12),
+          _buildStatCard('0', 'Projects', Icons.work),
+          const SizedBox(height: 12),
+          _buildStatCard('0', 'Certificates', Icons.card_membership),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEventsTab() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.event, size: 60, color: Color(0xFF3B82F6)),
+          const SizedBox(height: 20),
+          const Text(
+            'Events',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 10),
+          const Text('No events yet'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProjectsTab() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.work, size: 60, color: Color(0xFF3B82F6)),
+          const SizedBox(height: 20),
+          const Text(
+            'Projects',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 10),
+          const Text('No projects yet'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProfileTab() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.person, size: 60, color: Color(0xFF3B82F6)),
+          const SizedBox(height: 20),
+          const Text(
+            'Profile',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 30),
+          ElevatedButton.icon(
+            onPressed: _handleLogout,
+            icon: const Icon(Icons.logout),
+            label: const Text('Logout'),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _handleLogout() {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const MainApp()),
+      (route) => false,
+    );
+  }
+
+  Widget _buildStatCard(String value, String label, IconData icon) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -310,67 +422,5 @@ class _StudentDashboardState extends State<StudentDashboard> {
         ],
       ),
     );
-  }
-}
-
-class ProfessorHomeScreen extends StatefulWidget {
-  const ProfessorHomeScreen({Key? key}) : super(key: key);
-
-  @override
-  State<ProfessorHomeScreen> createState() => _ProfessorHomeScreenState();
-}
-
-class _ProfessorHomeScreenState extends State<ProfessorHomeScreen> {
-  int _currentIndex = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    final screens = [
-      ProfessorMyEventsScreen(
-        onViewEvent: _onViewEvent,
-        onNavigate: _onNavigate,
-      ),
-      CreateEventScreen(onNavigate: (i) => setState(() => _currentIndex = i)),
-      ProfessorProfileScreen(
-        onLogout: () => Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (_) => const AppEntry()),
-          (route) => false,
-        ),
-      ),
-    ];
-
-    return Scaffold(
-      body: SafeArea(child: screens[_currentIndex]),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (i) => setState(() => _currentIndex = i),
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF3B82F6),
-        unselectedItemColor: Colors.grey,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.event), label: 'Events'),
-          BottomNavigationBarItem(icon: Icon(Icons.add), label: 'Create'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
-        ],
-      ),
-    );
-  }
-
-  void _onViewEvent(String eventId) {
-    debugPrint('Viewing event: $eventId');
-  }
-
-  void _onNavigate(int index) {
-    setState(() => _currentIndex = index);
-  }
-}
-
-class StudentProfileScreen extends StatelessWidget {
-  const StudentProfileScreen({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(body: Center(child: Text('Profile Screen')));
   }
 }
