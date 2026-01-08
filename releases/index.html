@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Skill Link - Download App</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+        .logo {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 16px;
+        }
+        .features {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+            text-align: left;
+        }
+        .feature {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+            color: #555;
+        }
+        .feature:last-child {
+            margin-bottom: 0;
+        }
+        .feature-icon {
+            color: #667eea;
+            margin-right: 12px;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        .download-btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 16px 40px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            transition: transform 0.3s, box-shadow 0.3s;
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+            cursor: pointer;
+            border: none;
+            width: 100%;
+        }
+        .download-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 35px rgba(102, 126, 234, 0.6);
+        }
+        .download-btn:active {
+            transform: translateY(-1px);
+        }
+        .info {
+            background: #e8f4f8;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            text-align: left;
+            font-size: 14px;
+            color: #333;
+        }
+        .info-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #667eea;
+        }
+        .step {
+            margin-bottom: 8px;
+            padding-left: 20px;
+        }
+        .step::before {
+            content: "→ ";
+            color: #667eea;
+            font-weight: bold;
+            margin-left: -20px;
+        }
+        .checkmark {
+            color: #27ae60;
+            font-weight: bold;
+        }
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 30px;
+            gap: 15px;
+        }
+        .stat {
+            flex: 1;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+        }
+        .verified-badge {
+            display: inline-block;
+            background: #d4edda;
+            color: #155724;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">📱</div>
+        <h1>Skill Link</h1>
+        <p class="subtitle">Connect Students & Professors</p>
+        
+        <div class="verified-badge">✓ Verified & Safe</div>
+        
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-value">56.6</div>
+                <div class="stat-label">MB Size</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">5.0+</div>
+                <div class="stat-label">Android</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">v1.0.1</div>
+                <div class="stat-label">Version</div>
+            </div>
+        </div>
+
+        <div class="features">
+            <div class="feature">
+                <span class="feature-icon">✓</span>
+                <span><strong>Student Dashboard</strong> - Track your projects</span>
+            </div>
+            <div class="feature">
+                <span class="feature-icon">✓</span>
+                <span><strong>Professor Dashboard</strong> - Manage students</span>
+            </div>
+            <div class="feature">
+                <span class="feature-icon">✓</span>
+                <span><strong>Event Management</strong> - Attend classes & events</span>
+            </div>
+            <div class="feature">
+                <span class="feature-icon">✓</span>
+                <span><strong>Real-time Notifications</strong> - Stay updated</span>
+            </div>
+            <div class="feature">
+                <span class="feature-icon">✓</span>
+                <span><strong>Firebase Backend</strong> - Secure & fast</span>
+            </div>
+        </div>
+
+        <a href="SkillLink-v1.0.1-aligned.apk" class="download-btn">⬇ Download Now</a>
+
+        <div class="info">
+            <div class="info-title">How to Install:</div>
+            <div class="step">Click the "Download Now" button above</div>
+            <div class="step">Open the APK file on your Android phone</div>
+            <div class="step">Tap "Install" when prompted</div>
+            <div class="step">Open and enjoy Skill Link!</div>
+        </div>
+
+        <div style="margin-top: 20px; color: #999; font-size: 12px;">
+            <p><span class="checkmark">✓</span> No redirects • <span class="checkmark">✓</span> Direct download • <span class="checkmark">✓</span> 100% safe • <span class="checkmark">✓</span> Fully functional</p>
+        </div>
+    </div>
+</body>
+</html>
