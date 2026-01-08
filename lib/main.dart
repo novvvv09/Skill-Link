@@ -1,30 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'dart:async';
-import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    debugPrint('✅ Firebase initialized');
-  } catch (e) {
-    debugPrint('❌ Firebase error: $e');
-  }
-
-  runZonedGuarded(
-    () => runApp(const MyApp()),
-    (error, stack) => debugPrint('App crash: $error\n$stack'),
-  );
+void main() {
+  runApp(const SkillLinkApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+class SkillLinkApp extends StatelessWidget {
+  const SkillLinkApp({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -36,57 +17,53 @@ class MyApp extends StatelessWidget {
         primaryColor: const Color(0xFF3B82F6),
         useMaterial3: true,
       ),
-      home: const MainApp(),
+      home: const SplashPage(),
     );
   }
 }
 
-class MainApp extends StatefulWidget {
-  const MainApp({Key? key}) : super(key: key);
+class SplashPage extends StatefulWidget {
+  const SplashPage({Key? key}) : super(key: key);
 
   @override
-  State<MainApp> createState() => _MainAppState();
+  State<SplashPage> createState() => _SplashPageState();
 }
 
-class _MainAppState extends State<MainApp> {
-  bool _showSplash = true;
-
+class _SplashPageState extends State<SplashPage> {
   @override
   void initState() {
     super.initState();
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted) {
-        setState(() => _showSplash = false);
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const RoleSelectionPage()),
+        );
       }
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_showSplash) {
-      return const Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.school, size: 80, color: Color(0xFF3B82F6)),
-              SizedBox(height: 20),
-              Text(
-                'SkillLink',
-                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
+    return const Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.school, size: 80, color: Color(0xFF3B82F6)),
+            SizedBox(height: 20),
+            Text(
+              'SkillLink',
+              style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+            ),
+          ],
         ),
-      );
-    }
-
-    return const RoleSelectionHome();
+      ),
+    );
   }
 }
 
-class RoleSelectionHome extends StatelessWidget {
-  const RoleSelectionHome({Key? key}) : super(key: key);
+class RoleSelectionPage extends StatelessWidget {
+  const RoleSelectionPage({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -102,7 +79,13 @@ class RoleSelectionHome extends StatelessWidget {
               ),
               const SizedBox(height: 40),
               ElevatedButton.icon(
-                onPressed: () => _navigateToLogin(context, 'student'),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const LoginPage(role: 'student'),
+                    ),
+                  );
+                },
                 icon: const Icon(Icons.school),
                 label: const Text('Student'),
                 style: ElevatedButton.styleFrom(
@@ -116,7 +99,13 @@ class RoleSelectionHome extends StatelessWidget {
               ),
               const SizedBox(height: 20),
               ElevatedButton.icon(
-                onPressed: () => _navigateToLogin(context, 'professor'),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const LoginPage(role: 'professor'),
+                    ),
+                  );
+                },
                 icon: const Icon(Icons.person),
                 label: const Text('Professor'),
                 style: ElevatedButton.styleFrom(
@@ -133,12 +122,6 @@ class RoleSelectionHome extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  void _navigateToLogin(BuildContext context, String role) {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => LoginPage(role: role)));
   }
 }
 
@@ -241,8 +224,6 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     setState(() => _isLoading = true);
-
-    // Navigate to dashboard
     Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) {
         Navigator.of(context).pushReplacement(
@@ -268,10 +249,10 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   Widget build(BuildContext context) {
     final screens = [
-      _buildHomeTab(),
-      _buildEventsTab(),
-      _buildProjectsTab(),
-      _buildProfileTab(),
+      _buildHome(),
+      _buildEvents(),
+      _buildProjects(),
+      _buildProfile(),
     ];
 
     return Scaffold(
@@ -292,7 +273,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildHomeTab() {
+  Widget _buildHome() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -318,43 +299,43 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildEventsTab() {
-    return Center(
+  Widget _buildEvents() {
+    return const Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.event, size: 60, color: Color(0xFF3B82F6)),
-          const SizedBox(height: 20),
-          const Text(
+          Icon(Icons.event, size: 60, color: Color(0xFF3B82F6)),
+          SizedBox(height: 20),
+          Text(
             'Events',
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
-          const SizedBox(height: 10),
-          const Text('No events yet'),
+          SizedBox(height: 10),
+          Text('No events available'),
         ],
       ),
     );
   }
 
-  Widget _buildProjectsTab() {
-    return Center(
+  Widget _buildProjects() {
+    return const Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.work, size: 60, color: Color(0xFF3B82F6)),
-          const SizedBox(height: 20),
-          const Text(
+          Icon(Icons.work, size: 60, color: Color(0xFF3B82F6)),
+          SizedBox(height: 20),
+          Text(
             'Projects',
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
-          const SizedBox(height: 10),
-          const Text('No projects yet'),
+          SizedBox(height: 10),
+          Text('No projects available'),
         ],
       ),
     );
   }
 
-  Widget _buildProfileTab() {
+  Widget _buildProfile() {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -367,20 +348,18 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
           const SizedBox(height: 30),
           ElevatedButton.icon(
-            onPressed: _handleLogout,
+            onPressed: () {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const SplashPage()),
+                (route) => false,
+              );
+            },
             icon: const Icon(Icons.logout),
             label: const Text('Logout'),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
           ),
         ],
       ),
-    );
-  }
-
-  void _handleLogout() {
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const MainApp()),
-      (route) => false,
     );
   }
 
