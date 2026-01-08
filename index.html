@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Skill Link - Download App</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            padding: 40px;
+            text-align: center;
+        }
+        
+        .logo {
+            font-size: 60px;
+            margin-bottom: 20px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 16px;
+        }
+        
+        .features {
+            text-align: left;
+            background: #f5f5f5;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .features li {
+            list-style: none;
+            padding: 8px 0;
+            color: #555;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .features li:last-child {
+            border-bottom: none;
+        }
+        
+        .features li:before {
+            content: "✓ ";
+            color: #667eea;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        
+        .download-btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 40px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-size: 18px;
+            font-weight: bold;
+            transition: transform 0.3s, box-shadow 0.3s;
+            margin-bottom: 15px;
+            border: none;
+            cursor: pointer;
+        }
+        
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-bottom: 20px;
+            text-align: left;
+            border-radius: 5px;
+        }
+        
+        .info-box strong {
+            color: #667eea;
+        }
+        
+        .version {
+            font-size: 14px;
+            color: #999;
+            margin-top: 20px;
+        }
+        
+        .github-link {
+            color: #667eea;
+            text-decoration: none;
+            margin-top: 20px;
+            display: block;
+            font-size: 14px;
+        }
+        
+        .github-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">📱</div>
+        <h1>Skill Link</h1>
+        <p class="subtitle">Connect Students with Professors</p>
+        
+        <div class="info-box">
+            <strong>✓ Version 1.0.1 - Production Ready</strong>
+            <p style="margin-top: 8px; font-size: 14px;">Properly signed and optimized for all Android devices</p>
+        </div>
+        
+        <ul class="features">
+            <li>Student & Professor Dashboard</li>
+            <li>Event Management</li>
+            <li>Project Posting & Tracking</li>
+            <li>Real-time Notifications</li>
+            <li>Firebase Integration</li>
+            <li>Works on Android 5.0+</li>
+        </ul>
+        
+        <button class="download-btn" onclick="downloadAPK()">
+            📥 Download APK (56.6 MB)
+        </button>
+        
+        <p class="version">Version 1.0.1 | Released January 8, 2026</p>
+        
+        <a href="https://github.com/novvvv09/Skill-Link" class="github-link" target="_blank">
+            View on GitHub →
+        </a>
+    </div>
+    
+    <script>
+        function downloadAPK() {
+            // Direct download link from GitHub
+            const downloadUrl = 'https://github.com/novvvv09/Skill-Link/releases/download/v1.0.1/SkillLink-v1.0.1.apk';
+            
+            // Create a temporary link and trigger download
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = 'SkillLink-v1.0.1.apk';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
