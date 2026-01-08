@@ -27,6 +27,12 @@ void main() async {
     print('Firebase initialization error: $e');
   }
 
+  // Add global error handling
+  FlutterError.onError = (FlutterErrorDetails details) {
+    print('Flutter Error: ${details.exception}');
+    print('Stack Trace: ${details.stack}');
+  };
+
   runApp(const MyApp());
 }
 
@@ -72,39 +78,56 @@ class _AppNavigatorState extends State<AppNavigator> {
   }
 
   void _navigateAfterSplash() async {
-    // Wait for splash screen duration (adjust based on your splash_screen.dart)
-    await Future.delayed(const Duration(seconds: 3));
+    try {
+      // Wait for splash screen duration (adjust based on your splash_screen.dart)
+      await Future.delayed(const Duration(seconds: 3));
 
-    if (mounted) {
-      setState(() {
-        _showSplash = false;
-      });
+      if (mounted) {
+        setState(() {
+          _showSplash = false;
+        });
+      }
+    } catch (e) {
+      print('Navigation error after splash: $e');
+      if (mounted) {
+        setState(() {
+          _showSplash = false;
+        });
+      }
     }
   }
 
   void _handleRoleSelection(String role) {
-    // Navigate to login screen with selected role
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) =>
-            LoginScreen(role: role, onLogin: () => _handleLogin(role)),
-      ),
-    );
+    try {
+      // Navigate to login screen with selected role
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) =>
+              LoginScreen(role: role, onLogin: () => _handleLogin(role)),
+        ),
+      );
+    } catch (e) {
+      print('Error selecting role: $e');
+    }
   }
 
   void _handleLogin(String role) {
-    // Navigate to the appropriate dashboard after successful login
-    if (role == 'student') {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const StudentHomeScreen()),
-      );
-    } else if (role == 'professor') {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const ProfessorHomeScreen()),
-      );
+    try {
+      // Navigate to the appropriate dashboard after successful login
+      if (role == 'student') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const StudentHomeScreen()),
+        );
+      } else if (role == 'professor') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const ProfessorHomeScreen()),
+        );
+      }
+    } catch (e) {
+      print('Error handling login navigation: $e');
     }
   }
 
