@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-class ProjectsPage extends StatefulWidget {
-  const ProjectsPage({Key? key}) : super(key: key);
+class PostProjectPage extends StatefulWidget {
+  const PostProjectPage({Key? key}) : super(key: key);
 
   @override
-  State<ProjectsPage> createState() => _ProjectsPageState();
+  State<PostProjectPage> createState() => _PostProjectPageState();
 }
 
-class _ProjectsPageState extends State<ProjectsPage> {
+class _PostProjectPageState extends State<PostProjectPage> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   List<Project> _projects = mockProjects;

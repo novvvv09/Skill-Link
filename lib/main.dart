@@ -9,7 +9,7 @@ import 'package:skill_link/professor/professor_nav.dart';
 import 'package:skill_link/professor/professor_profile.dart';
 import 'package:skill_link/student/event_screen.dart';
 import 'package:skill_link/student/notification_screen.dart';
-import 'package:skill_link/student/post_project_modal.dart';
+import 'package:skill_link/student/project_screen.dart';
 import 'package:skill_link/student/student_profile.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
